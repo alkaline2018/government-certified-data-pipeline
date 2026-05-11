@@ -1,0 +1,182 @@
+"""
+pipeline/work24.py
+==================
+고용24(워크넷, www.work24.go.kr) 데이터 수집 파이프라인.
+
+[응답 구조 - 실제 API 호출로 확인]
+  GET {URL}?authKey={KEY}&returnType=XML&startPage=1&display=1
+
+  XML 응답 구조 (청년친화강소기업, smallGiantsList):
+  <?xml version="1.0" encoding="UTF-8"?>
+  <smallGiantsList>
+    <total>224</total>           <!-- 전체 건수 -->
+    <startPage>1</startPage>
+    <display>1</display>
+    <smallGiant>
+      <coNm>주식회사 지씨</coNm>
+      <busiNo>6058141445</busiNo>
+      <reperNm>이상길</reperNm>
+      <superIndTpCd>J</superIndTpCd>
+      <superIndTpNm>정보통신업</superIndTpNm>
+      <indTpCd>62</indTpCd>
+      <indTpNm>컴퓨터 프로그래밍, 시스템 통합 및 관리업</indTpNm>
+    </smallGiant>
+  </smallGiantsList>
+
+[페이징 방식]
+  - Query Parameter: startPage (1-indexed), display (per page)
+  - <total> 태그에서 전체 건수 파악 후 페이징
+
+[응답 포맷 특이사항]
+  - xmltodict 파싱 시:
+    · 단건: smallGiant 가 dict로 반환됨
+    · 다건: smallGiant 가 list로 반환됨
+    → 항상 list로 정규화하여 처리
+
+[수집 주기]
+  - 권장: 월 1회
+"""
+import logging
+import math
+import os
+
+import xmltodict
+
+from pipeline.base import BasePipeline
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+# ------------------------------------------------------------------
+# 수집 대상 엔드포인트 레지스트리
+# ------------------------------------------------------------------
+WORK24_ENDPOINTS: dict[str, tuple[str, str, str]] = {
+    "youth_friendly": (
+        "https://www.work24.go.kr/cm/openApi/call/wk/callOpenApiSvcInfo216L31.do",
+        "smallGiantsList",   # XML 루트 태그명
+        "smallGiant",        # XML 레코드 태그명
+    ),
+}
+
+
+class Work24Pipeline(BasePipeline):
+    """
+    고용24 데이터 수집 파이프라인 (XML 응답).
+
+    Args:
+        endpoint_key (str): WORK24_ENDPOINTS 딕셔너리의 키
+        per_page (int): 페이지당 수집 건수 (테스트: 1, 운영: 100)
+    """
+
+    def __init__(self, endpoint_key: str = "youth_friendly", per_page: int = 100, max_pages: int | None = None):
+        super().__init__(per_page=per_page, max_pages=max_pages)
+
+        if endpoint_key not in WORK24_ENDPOINTS:
+            raise ValueError(
+                f"endpoint_key는 {list(WORK24_ENDPOINTS.keys())} 중 하나여야 합니다."
+            )
+
+        self.endpoint_key = endpoint_key
+        self.endpoint_url, self.root_tag, self.record_tag = WORK24_ENDPOINTS[endpoint_key]
+        self.api_key = os.environ["WORK24_API_KEY"]
+
+        self.job_name = f"Work24_{endpoint_key}"
+        self.output_dir = self.output_dir.parent / self.job_name
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Accept 헤더를 XML로 덮어씌움
+        self.session.headers.update({"Accept": "application/xml, text/xml, */*"})
+
+    # ------------------------------------------------------------------
+    # 내부 유틸
+    # ------------------------------------------------------------------
+
+    def _build_params(self, start_page: int) -> dict:
+        return {
+            "authKey": self.api_key,
+            "returnType": "XML",
+            "startPage": start_page,
+            "display": self.per_page,
+        }
+
+    def _fetch_and_parse(self, start_page: int) -> tuple[int, list[dict]]:
+        """
+        단일 페이지 요청 → (total, records) 반환.
+        xmltodict로 XML을 파싱한 후 레코드 리스트를 반환한다.
+        """
+        params = self._build_params(start_page)
+        logger.debug(f"[{self.job_name}] 요청: {self.endpoint_url} startPage={start_page}")
+
+        resp = self._get(self.endpoint_url, params=params)
+        # XML 파싱
+        parsed = xmltodict.parse(resp.text)
+        root = parsed.get(self.root_tag, {})
+
+        total = int(root.get("total", 0))
+        raw_records = root.get(self.record_tag, [])
+
+        # xmltodict는 단건일 때 dict, 다건일 때 list를 반환
+        # → 항상 list로 정규화
+        if isinstance(raw_records, dict):
+            raw_records = [raw_records]
+        elif raw_records is None:
+            raw_records = []
+
+        return total, raw_records
+
+    # ------------------------------------------------------------------
+    # 파이프라인 3단계
+    # ------------------------------------------------------------------
+
+    def collect(self) -> None:
+        """
+        [1단계] startPage=1 호출로 <total> 파악 후 전체 페이지 순회.
+        """
+        total, first_records = self._fetch_and_parse(1)
+        self._raw_pages.append(first_records)
+
+        logger.info(
+            f"[{self.job_name}] 전체 건수: {total:,}건 | display(per_page)={self.per_page}"
+        )
+
+        if total <= self.per_page:
+            return
+
+        total_pages = math.ceil(total / self.per_page)
+        limit = min(total_pages, self.max_pages) if self.max_pages else total_pages
+        if self.max_pages:
+            logger.info(f"[{self.job_name}] max_pages={self.max_pages} 제한 적용")
+        for page_no in range(2, limit + 1):
+            logger.info(f"[{self.job_name}] 페이지 {page_no}/{limit}")
+            _, page_records = self._fetch_and_parse(page_no)
+            self._raw_pages.append(page_records)
+
+    def refine(self) -> None:
+        """
+        [2단계] XML → dict 로 변환된 원본 데이터 정제.
+        - xmltodict의 OrderedDict → 일반 dict 변환
+        - None 정규화 (OrderedDict None → Python None)
+        - 메타 필드 추가
+        """
+        for page_records in self._raw_pages:
+            for record in page_records:
+                # OrderedDict → dict (Python 3.7+ dict는 순서 보장)
+                refined = {}
+                for k, v in record.items():
+                    # xmltodict의 None은 Python None
+                    if v is None or v == "":
+                        v = None
+                    elif isinstance(v, str):
+                        v = v.strip() or None
+
+                    refined[k] = v
+
+                # 메타 필드
+                refined["_source"] = "work24"
+                refined["_endpoint_key"] = self.endpoint_key
+                self._refined_records.append(refined)
+
+    def extract(self) -> Path:
+        """[3단계] 정제된 데이터를 JSON 파일로 저장."""
+        filename = f"{self.endpoint_key}_{self._today_str()}.json"
+        return self._save_json(self._refined_records, filename)
