@@ -95,8 +95,6 @@ class DataPortalPipeline(BasePipeline):
         self.api_key = os.environ["DATAPORTAL_ENCODING_API_KEY"]
 
         self.job_name = f"DataPortal_{self.dataset_name}"
-        self.output_dir = self.output_dir.parent / self.job_name
-        self.output_dir.mkdir(parents=True, exist_ok=True)
 
     # ------------------------------------------------------------------
     # 내부 유틸
@@ -165,6 +163,8 @@ class DataPortalPipeline(BasePipeline):
         """
         first_data = self._fetch_page(1)
         total_count = first_data.get("totalCount", 0)
+        self.expected_total = total_count
+        
         self._raw_pages.append(first_data["data"])
 
         logger.info(
@@ -186,10 +186,6 @@ class DataPortalPipeline(BasePipeline):
     def refine(self) -> None:
         """
         [2단계] 원본 데이터 정제.
-        - 탭 구분 컬럼 자동 감지 및 분리 (성능인증 API)
-        - None/빈 문자열 정규화
-        - 정수형 사업자번호 등 타입 보정 (str로 통일)
-        - 메타 필드 추가
         """
         for page_rows in self._raw_pages:
             for row in page_rows:
@@ -216,6 +212,7 @@ class DataPortalPipeline(BasePipeline):
                 self._refined_records.append(normalized)
 
     def extract(self) -> Path:
-        """[3단계] 정제된 데이터를 JSON 파일로 저장."""
-        filename = f"{self.dataset_name}_{self._today_str()}.json"
-        return self._save_json(self._refined_records, filename)
+        """[3단계] 정제된 데이터를 CSV 파일로 저장."""
+        filename = f"{self.job_name}_{self._today_str()}.csv"
+        return self._save_csv(self._refined_records, filename)
+
