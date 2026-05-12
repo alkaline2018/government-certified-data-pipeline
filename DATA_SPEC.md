@@ -45,6 +45,8 @@
 | 10 | 지역 |
 | 11 | _source |
 | 12 | _endpoint_key |
+| 13 | _collected_at |
+| 14 | _guid |
 
 ### 📂 DataPortal_기술개발제품_인증
 | 순번 | 컬럼명 |
@@ -59,6 +61,8 @@
 | 8 | 인증제품명 |
 | 9 | _source |
 | 10 | _endpoint_key |
+| 11 | _collected_at |
+| 12 | _guid |
 
 ### 📂 DataPortal_성능인증_발급현황
 | 순번 | 컬럼명 |
@@ -73,6 +77,8 @@
 | 8 | 유효기간 |
 | 9 | _source |
 | 10 | _endpoint_key |
+| 11 | _collected_at |
+| 12 | _guid |
 
 ### 📂 DataPortal_인재육성형_중소기업
 | 순번 | 컬럼명 |
@@ -87,6 +93,8 @@
 | 8 | 주소 |
 | 9 | _source |
 | 10 | _endpoint_key |
+| 11 | _collected_at |
+| 12 | _guid |
 
 ### 📂 DataPortal_전국_백년가게_현황
 | 순번 | 컬럼명 |
@@ -101,6 +109,8 @@
 | 8 | 주요사업 |
 | 9 | _source |
 | 10 | _endpoint_key |
+| 11 | _collected_at |
+| 12 | _guid |
 
 ### 📂 DataPortal_전국_백년소공인_지정
 | 순번 | 컬럼명 |
@@ -111,6 +121,8 @@
 | 4 | 연번 |
 | 5 | _source |
 | 6 | _endpoint_key |
+| 7 | _collected_at |
+| 8 | _guid |
 
 ### 📂 DataPortal_창업기업확인서_정보
 | 순번 | 컬럼명 |
@@ -126,6 +138,8 @@
 | 9 | unin_repr_nm |
 | 10 | _source |
 | 11 | _endpoint_key |
+| 12 | _collected_at |
+| 13 | _guid |
 
 ### 📂 FoodSafety_HACCP_적용업소
 | 순번 | 컬럼명 |
@@ -145,6 +159,8 @@
 | 13 | ASGN_CANCL_DT |
 | 14 | _source |
 | 15 | _service_code |
+| 16 | _collected_at |
+| 17 | _guid |
 
 ### 📂 FoodSafety_식품모범음식점
 | 순번 | 컬럼명 |
@@ -159,6 +175,8 @@
 | 8 | PNCPL_FOOD_NM |
 | 9 | _source |
 | 10 | _service_code |
+| 11 | _collected_at |
+| 12 | _guid |
 
 ### 📂 Work24_youth_friendly
 | 순번 | 컬럼명 |
@@ -172,3 +190,5 @@
 | 7 | indTpNm |
 | 8 | _source |
 | 9 | _endpoint_key |
+| 10 | _collected_at |
+| 11 | _guid |
