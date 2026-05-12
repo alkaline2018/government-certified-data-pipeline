@@ -83,7 +83,7 @@ class Work24Pipeline(BasePipeline):
         self.endpoint_url, self.root_tag, self.record_tag = WORK24_ENDPOINTS[endpoint_key]
         self.api_key = os.environ["WORK24_API_KEY"]
 
-        self.job_name = f"Work24_{endpoint_key}"
+        self.job_name = "Work24_청년친화강소기업" if endpoint_key == "youth_friendly" else f"Work24_{endpoint_key}"
 
         # Accept 헤더를 XML로 덮어씌움
         self.session.headers.update({"Accept": "application/xml, text/xml, */*"})
