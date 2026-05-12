@@ -146,6 +146,11 @@ def build_parser(registry: dict) -> argparse.ArgumentParser:
         help="테스트용: 최대 N페이지만 수집. 예) --maxpages 1 → 1페이지만",
     )
     parser.add_argument(
+        "--from-raw",
+        action="store_true",
+        help="API를 호출하지 않고 로컬 storage/raw/ 에 저장된 원본 데이터를 사용하여 재추출",
+    )
+    parser.add_argument(
         "--loglevel",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -164,11 +169,12 @@ def _run_single_job(
     kwargs: dict,
     per_page: int,
     max_pages: int | None,
+    from_raw: bool = False,
 ) -> dict | None:
     """단일 파이프라인 인스턴스를 실행하고 stats dict를 반환한다."""
     try:
         pipeline = pipeline_cls(**kwargs, per_page=per_page, max_pages=max_pages)
-        return pipeline.run()
+        return pipeline.run(from_raw=from_raw)
     except Exception:
         return None
 
@@ -178,6 +184,7 @@ def run_job(
     per_page: int,
     registry: dict,
     max_pages: int | None = None,
+    from_raw: bool = False,
     send_summary: bool = False,
     batch_name: str = "전체 수집 작업",
 ) -> list[dict]:
@@ -203,7 +210,7 @@ def run_job(
             ep_per_page = per_page or SCHEDULE_CONFIG.get(f"dataportal_{ep_key}", {}).get("per_page", 1000)
             try:
                 pipeline = DataPortalPipeline(endpoint_key=ep_key, per_page=ep_per_page, max_pages=max_pages)
-                res = pipeline.run()
+                res = pipeline.run(from_raw=from_raw)
                 results.append(res)
             except Exception as exc:
                 logger.error(f"dataportal_{ep_key} 실패: {exc}")
@@ -214,7 +221,7 @@ def run_job(
 
     # 일반 단일 Job
     job_per_page = per_page or SCHEDULE_CONFIG.get(job_id, {}).get("per_page", 1000)
-    res = _run_single_job(job_id, pipeline_cls, kwargs, job_per_page, max_pages)
+    res = _run_single_job(job_id, pipeline_cls, kwargs, job_per_page, max_pages, from_raw=from_raw)
     if res:
         results.append(res)
 
@@ -226,7 +233,7 @@ def run_job(
     return results
 
 
-def run_schedule(per_page: int | None, max_pages: int | None, registry: dict) -> None:
+def run_schedule(per_page: int | None, max_pages: int | None, registry: dict, from_raw: bool = False) -> None:
     """schedule_config.py 기준으로 오늘 실행 대상 Job을 모두 실행한다."""
     from pipeline.schedule_config import get_jobs_due_today, SCHEDULE_CONFIG
     from pipeline.notifier import SlackNotifier
@@ -247,7 +254,7 @@ def run_schedule(per_page: int | None, max_pages: int | None, registry: dict) ->
         cfg = SCHEDULE_CONFIG.get(job_id, {})
         job_per_page = per_page or cfg.get("per_page", 1000)
         logger.info(f"[스케줄] {job_id} 실행 (per_page={job_per_page})")
-        results = run_job(job_id, job_per_page, registry, max_pages=max_pages)
+        results = run_job(job_id, job_per_page, registry, max_pages=max_pages, from_raw=from_raw)
         all_results.extend(results)
 
     total_elapsed = int((datetime.now() - start_time).total_seconds())
@@ -275,7 +282,7 @@ def main() -> None:
     if args.schedule:
         logger.info("스케줄 모드 실행")
         try:
-            run_schedule(args.perpage, args.maxpages, registry)
+            run_schedule(args.perpage, args.maxpages, registry, from_raw=args.from_raw)
             sys.exit(0)
         except Exception as exc:
             logger.error(f"스케줄 실행 실패: {exc}")
@@ -287,7 +294,7 @@ def main() -> None:
 
     logger.info(f"실행 요청: job={args.job}, perpage={args.perpage}")
     try:
-        run_job(args.job, args.perpage, registry, max_pages=args.maxpages)
+        run_job(args.job, args.perpage, registry, max_pages=args.maxpages, from_raw=args.from_raw)
         logger.info(f"[{args.job}] 완료")
         sys.exit(0)
     except Exception as exc:
