@@ -7,35 +7,26 @@ main.py
   # 도움말
   python main.py --help
 
-  # 식약처 HACCP - 테스트 (1건만 수집)
-  python main.py --job foodsafety_haccp --perpage 1
-
-  # 식약처 모범음식점 - 운영
-  python main.py --job foodsafety_restaurant --perpage 1000
-
-  # 공공데이터포털 - 기술개발 우수기업 테스트
-  python main.py --job dataportal_tech_excellence --perpage 1
-
-  # 공공데이터포털 - 전체 7개 엔드포인트 한 번에 실행
+  # 개별 Job 실행
+  python main.py --job foodsafety_haccp --perpage 1000
   python main.py --job dataportal_all --perpage 1000
+  python main.py --job work24_youth_friendly
 
-  # 고용24 - 청년친화강소기업
-  python main.py --job work24_youth_friendly --perpage 1
+  # 테스트 (5건만, 1페이지만)
+  python main.py --job foodsafety_haccp --perpage 5 --maxpages 1
 
-  # 로그 레벨 조정 (기본: INFO)
-  python main.py --job work24_youth_friendly --perpage 1 --loglevel DEBUG
+  # 스케줄 모드: 오늘 실행 대상 Job을 schedule_config.py 기준으로 자동 선택
+  python main.py --schedule
+
+  # 수집 주기 설정 확인
+  python main.py --show-schedule
 
 환경 변수:
-  .env 파일에 API 키와 Slack Webhook URL을 설정하세요. (.env.example 참조)
+  .env 파일에 API 키와 Slack Webhook URL을 설정하세요.
 
 Airflow / Cron 연동 예시:
-  # Crontab (매월 1일 새벽 2시에 식약처 전체 수집)
-  0 2 1 * * cd /path/to/project && python main.py --job foodsafety_haccp --perpage 1000
-
-  # Airflow PythonOperator
-  from pipeline.foodsafety import FoodSafetyPipeline
-  def run_haccp(**ctx):
-      FoodSafetyPipeline(service_key="haccp", per_page=1000).run()
+  # Crontab - 매일 새벽 2시 스케줄 자동 실행
+  0 2 * * * cd /path/to/project && python main.py --schedule
 """
 import argparse
 import logging
@@ -116,30 +107,43 @@ def build_parser(registry: dict) -> argparse.ArgumentParser:
 {chr(10).join(f'  {j}' for j in job_choices)}
 
 예시:
-  python main.py --job foodsafety_haccp --perpage 1
+  python main.py --job foodsafety_haccp --perpage 1000
   python main.py --job dataportal_all --perpage 1000
-  python main.py --job work24_youth_friendly --perpage 1
+  python main.py --schedule
+  python main.py --show-schedule
         """,
     )
-    parser.add_argument(
+
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument(
         "--job",
-        required=True,
         choices=job_choices,
         metavar="JOB",
         help=f"실행할 수집 작업 ID. 선택지: {', '.join(job_choices)}",
     )
+    mode_group.add_argument(
+        "--schedule",
+        action="store_true",
+        help="schedule_config.py 기준으로 오늘 실행 대상 Job을 자동 선택하여 실행",
+    )
+    mode_group.add_argument(
+        "--show-schedule",
+        action="store_true",
+        dest="show_schedule",
+        help="현재 수집 주기 설정을 출력하고 종료",
+    )
     parser.add_argument(
         "--perpage",
         type=int,
-        default=1000,
-        help="페이지당 수집 건수 (테스트: 1, 운영: 1000). 기본값: 1000",
+        default=None,
+        help="페이지당 수집 건수. 미지정 시 schedule_config.py의 per_page 사용",
     )
     parser.add_argument(
         "--maxpages",
         type=int,
         default=None,
         metavar="N",
-        help="테스트용: 최대 N페이지만 수집. 미지정시 전체 수집 (운영). 예) --maxpages 1 → 1페이지만",
+        help="테스트용: 최대 N페이지만 수집. 예) --maxpages 1 → 1페이지만",
     )
     parser.add_argument(
         "--loglevel",
@@ -154,26 +158,100 @@ def build_parser(registry: dict) -> argparse.ArgumentParser:
 # 실행
 # ------------------------------------------------------------------
 
-def run_job(job_id: str, per_page: int, registry: dict, max_pages: int | None = None) -> None:
-    """지정된 job_id에 해당하는 파이프라인을 실행한다."""
+def _run_single_job(
+    job_id: str,
+    pipeline_cls,
+    kwargs: dict,
+    per_page: int,
+    max_pages: int | None,
+) -> dict | None:
+    """단일 파이프라인 인스턴스를 실행하고 stats dict를 반환한다."""
+    try:
+        pipeline = pipeline_cls(**kwargs, per_page=per_page, max_pages=max_pages)
+        return pipeline.run()
+    except Exception:
+        return None
+
+
+def run_job(
+    job_id: str,
+    per_page: int,
+    registry: dict,
+    max_pages: int | None = None,
+    send_summary: bool = False,
+    batch_name: str = "전체 수집 작업",
+) -> list[dict]:
+    """
+    지정된 job_id 파이프라인을 실행하고 결과 리스트를 반환한다.
+    dataportal_all 같은 multi-job의 경우 요약 Slack도 전송한다.
+    """
     from pipeline.dataportal import DataPortalPipeline, DATAPORTAL_ENDPOINTS
+    from pipeline.notifier import SlackNotifier
+    from pipeline.schedule_config import SCHEDULE_CONFIG
+    from datetime import datetime
 
     spec = registry[job_id]
     pipeline_cls, kwargs = spec
+    results: list[dict] = []
+    start_time = datetime.now()
+    logger = logging.getLogger(__name__)
 
-    # 특수 케이스: dataportal_all (전체 엔드포인트 순차 실행)
+    # dataportal_all — 7개 엔드포인트 순차 실행 + 요약
     if pipeline_cls == "__special__" and kwargs.get("type") == "dataportal_all":
-        logging.getLogger(__name__).info(
-            f"dataportal_all: {len(DATAPORTAL_ENDPOINTS)}개 엔드포인트 순차 실행"
-        )
+        logger.info(f"dataportal_all: {len(DATAPORTAL_ENDPOINTS)}개 엔드포인트 순차 실행")
         for ep_key in DATAPORTAL_ENDPOINTS:
-            pipeline = DataPortalPipeline(endpoint_key=ep_key, per_page=per_page, max_pages=max_pages)
-            pipeline.run()
+            ep_per_page = per_page or SCHEDULE_CONFIG.get(f"dataportal_{ep_key}", {}).get("per_page", 1000)
+            try:
+                pipeline = DataPortalPipeline(endpoint_key=ep_key, per_page=ep_per_page, max_pages=max_pages)
+                res = pipeline.run()
+                results.append(res)
+            except Exception as exc:
+                logger.error(f"dataportal_{ep_key} 실패: {exc}")
+
+        total_elapsed = int((datetime.now() - start_time).total_seconds())
+        SlackNotifier().send_summary(results, total_elapsed, batch_name="공공데이터포털 전체 수집")
+        return results
+
+    # 일반 단일 Job
+    job_per_page = per_page or SCHEDULE_CONFIG.get(job_id, {}).get("per_page", 1000)
+    res = _run_single_job(job_id, pipeline_cls, kwargs, job_per_page, max_pages)
+    if res:
+        results.append(res)
+
+    # 외부에서 send_summary=True를 요청한 경우 (배치 스케줄 실행)
+    if send_summary:
+        total_elapsed = int((datetime.now() - start_time).total_seconds())
+        SlackNotifier().send_summary(results, total_elapsed, batch_name=batch_name)
+
+    return results
+
+
+def run_schedule(per_page: int | None, max_pages: int | None, registry: dict) -> None:
+    """schedule_config.py 기준으로 오늘 실행 대상 Job을 모두 실행한다."""
+    from pipeline.schedule_config import get_jobs_due_today, SCHEDULE_CONFIG
+    from pipeline.notifier import SlackNotifier
+    from datetime import datetime
+
+    logger = logging.getLogger(__name__)
+    today_jobs = get_jobs_due_today()
+
+    if not today_jobs:
+        logger.info("오늘 실행 대상 Job이 없습니다.")
         return
 
-    # 일반 케이스
-    pipeline = pipeline_cls(**kwargs, per_page=per_page, max_pages=max_pages)
-    pipeline.run()
+    logger.info(f"오늘 실행 대상 {len(today_jobs)}개 Job: {today_jobs}")
+    all_results: list[dict] = []
+    start_time = datetime.now()
+
+    for job_id in today_jobs:
+        cfg = SCHEDULE_CONFIG.get(job_id, {})
+        job_per_page = per_page or cfg.get("per_page", 1000)
+        logger.info(f"[스케줄] {job_id} 실행 (per_page={job_per_page})")
+        results = run_job(job_id, job_per_page, registry, max_pages=max_pages)
+        all_results.extend(results)
+
+    total_elapsed = int((datetime.now() - start_time).total_seconds())
+    SlackNotifier().send_summary(all_results, total_elapsed, batch_name="일일 스케줄 수집")
 
 
 def main() -> None:
@@ -184,8 +262,30 @@ def main() -> None:
     setup_logging(args.loglevel)
     logger = logging.getLogger(__name__)
 
-    logger.info(f"실행 요청: job={args.job}, perpage={args.perpage}")
+    # ── 수집 주기 확인 모드
+    if args.show_schedule:
+        from pipeline.schedule_config import print_schedule_table, get_jobs_due_today
+        from datetime import date
+        print_schedule_table()
+        due = get_jobs_due_today()
+        print(f"\n오늘({date.today()}) 실행 대상: {due if due else '없음'}")
+        sys.exit(0)
 
+    # ── 스케줄 자동 실행 모드
+    if args.schedule:
+        logger.info("스케줄 모드 실행")
+        try:
+            run_schedule(args.perpage, args.maxpages, registry)
+            sys.exit(0)
+        except Exception as exc:
+            logger.error(f"스케줄 실행 실패: {exc}")
+            sys.exit(1)
+
+    # ── 개별 Job 실행 모드
+    if not args.job:
+        parser.error("--job, --schedule, --show-schedule 중 하나를 지정해야 합니다.")
+
+    logger.info(f"실행 요청: job={args.job}, perpage={args.perpage}")
     try:
         run_job(args.job, args.perpage, registry, max_pages=args.maxpages)
         logger.info(f"[{args.job}] 완료")
