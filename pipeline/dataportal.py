@@ -129,6 +129,10 @@ class DataPortalPipeline(BasePipeline):
             )
         return data
 
+    def _extract_records_from_raw(self, raw_data: dict) -> list[dict]:
+        """공공데이터포털 응답 dict에서 'data' 리스트를 추출한다."""
+        return raw_data.get("data", [])
+
     # ------------------------------------------------------------------
     # 탭 구분자 컬럼 감지 및 분리 (성능인증 API 특수 처리)
     # ------------------------------------------------------------------
@@ -162,10 +166,13 @@ class DataPortalPipeline(BasePipeline):
         [1단계] page=1 호출로 totalCount 파악 후 전체 페이지 순회.
         """
         first_data = self._fetch_page(1)
+        self.save_raw(first_data, 1) # 원본 저장
+
         total_count = first_data.get("totalCount", 0)
         self.expected_total = total_count
         
-        self._raw_pages.append(first_data["data"])
+        rows = self._extract_records_from_raw(first_data)
+        self._raw_pages.append(rows)
 
         logger.info(
             f"[{self.job_name}] 전체 건수: {total_count:,}건 | per_page={self.per_page}"
@@ -181,7 +188,10 @@ class DataPortalPipeline(BasePipeline):
         for page_no in range(2, limit + 1):
             logger.info(f"[{self.job_name}] 페이지 {page_no}/{limit}")
             page_data = self._fetch_page(page_no)
-            self._raw_pages.append(page_data["data"])
+            self.save_raw(page_data, page_no) # 원본 저장
+            
+            rows = self._extract_records_from_raw(page_data)
+            self._raw_pages.append(rows)
 
     def refine(self) -> None:
         """
@@ -206,9 +216,11 @@ class DataPortalPipeline(BasePipeline):
 
                     normalized[k] = v
 
-                # 메타 필드
+                # 메타 필드 추가 (_source, _collected_at, _guid 등)
                 normalized["_source"] = "dataportal"
                 normalized["_endpoint_key"] = self.endpoint_key
+                self._add_metadata(normalized)
+                
                 self._refined_records.append(normalized)
 
     def extract(self) -> Path:
