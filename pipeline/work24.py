@@ -154,13 +154,13 @@ class Work24Pipeline(BasePipeline):
         self._raw_pages.append(rows)
 
         logger.info(
-            f"[{self.job_name}] 전체 건수: {total:,}건 | display(per_page)={self.per_page}"
+            f"[{self.job_name}] 전체 건수: {total_count:,}건 | display(per_page)={self.per_page}"
         )
 
-        if total <= self.per_page:
+        if total_count <= self.per_page:
             return
 
-        total_pages = math.ceil(total / self.per_page)
+        total_pages = math.ceil(total_count / self.per_page)
         limit = min(total_pages, self.max_pages) if self.max_pages else total_pages
         if self.max_pages:
             logger.info(f"[{self.job_name}] max_pages={self.max_pages} 제한 적용")
