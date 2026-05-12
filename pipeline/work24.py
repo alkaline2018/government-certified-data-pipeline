@@ -125,6 +125,14 @@ class Work24Pipeline(BasePipeline):
 
         return total, raw_records
 
+    def _extract_records_from_raw(self, raw_data: dict) -> list[dict]:
+        """워크넷 응답 dict에서 레코드 리스트를 추출한다."""
+        root = raw_data.get(self.root_tag, {})
+        raw_records = root.get(self.record_tag, [])
+        if isinstance(raw_records, dict):
+            return [raw_records]
+        return raw_records or []
+
     # ------------------------------------------------------------------
     # 파이프라인 3단계
     # ------------------------------------------------------------------
@@ -133,10 +141,17 @@ class Work24Pipeline(BasePipeline):
         """
         [1단계] startPage=1 호출로 <total> 파악 후 전체 페이지 순회.
         """
-        total, first_records = self._fetch_and_parse(1)
-        self.expected_total = total
+        params = self._build_params(1)
+        resp = self._get(self.endpoint_url, params=params)
+        first_data = xmltodict.parse(resp.text)
+        self.save_raw(first_data, 1) # 원본 저장
+
+        root = first_data.get(self.root_tag, {})
+        total_count = int(root.get("total", 0))
+        self.expected_total = total_count
         
-        self._raw_pages.append(first_records)
+        rows = self._extract_records_from_raw(first_data)
+        self._raw_pages.append(rows)
 
         logger.info(
             f"[{self.job_name}] 전체 건수: {total:,}건 | display(per_page)={self.per_page}"
@@ -151,8 +166,13 @@ class Work24Pipeline(BasePipeline):
             logger.info(f"[{self.job_name}] max_pages={self.max_pages} 제한 적용")
         for page_no in range(2, limit + 1):
             logger.info(f"[{self.job_name}] 페이지 {page_no}/{limit}")
-            _, page_records = self._fetch_and_parse(page_no)
-            self._raw_pages.append(page_records)
+            params = self._build_params(page_no)
+            resp = self._get(self.endpoint_url, params=params)
+            page_data = xmltodict.parse(resp.text)
+            self.save_raw(page_data, page_no)
+            
+            rows = self._extract_records_from_raw(page_data)
+            self._raw_pages.append(rows)
 
     def refine(self) -> None:
         """
@@ -171,9 +191,11 @@ class Work24Pipeline(BasePipeline):
 
                     refined[k] = v
 
-                # 메타 필드
+                # 메타 필드 추가 (_source, _collected_at, _guid 등)
                 refined["_source"] = "work24"
                 refined["_endpoint_key"] = self.endpoint_key
+                self._add_metadata(refined)
+                
                 self._refined_records.append(refined)
 
     def extract(self) -> Path:
