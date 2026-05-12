@@ -13,16 +13,11 @@ government-certified-data-pipeline/
 ├── requirements.txt
 ├── main.py                 # CLI 진입점
 ├── DATA_SPEC.md            # [분석가용] 데이터 정제 및 변환 상세 사양서
-├── pipeline/
-│   ├── __init__.py
-│   ├── base.py             # 추상 Base 클래스 (CSV 저장, S3 플레이스홀더 포함)
-│   ├── notifier.py         # Slack Block Kit 알림 (성공/실패/요약)
-│   ├── schedule_config.py  # 수집 주기(연간/월간) 설정 관리
-│   ├── foodsafety.py       # 식품의약품안전처 파이프라인
-│   ├── dataportal.py       # 공공데이터포털 파이프라인
-│   └── work24.py           # 고용24(워크넷) 파이프라인
-└── output/
-    └── csv_export/         # 모든 수집 결과 CSV 저장 (구분자: ‡)
+├── storage/
+│   ├── raw/                # API 원본 응답 저장 (JSON/XML)
+│   └── output/             # 정제된 CSV 결과물 (구분자: ‡)
+└── pipeline/
+    ├── base.py             # 추상 Base 클래스 (원본 저장, 재처리 로직 포함)
 ```
 
 ---
@@ -61,6 +56,12 @@ python main.py --job dataportal_all
 
 # 테스트 실행 (5건, 1페이지만)
 python main.py --job foodsafety_haccp --perpage 5 --maxpages 1
+
+#### C. 로컬 원본 데이터 기반 재처리 (Reprocessing)
+API를 호출하지 않고, 로컬에 저장된 `storage/raw/` 데이터를 사용하여 CSV를 다시 생성합니다. (추출 로직 변경 시 유용)
+```bash
+python main.py --job foodsafety_haccp --from-raw
+```
 ```
 
 ---
@@ -74,6 +75,7 @@ python main.py --job foodsafety_haccp --perpage 5 --maxpages 1
 | `--show-schedule` | 현재 수집 주기 설정을 출력하고 종료 | - |
 | `--perpage N` | 페이지당 수집 건수 (미지정 시 설정값 사용) | config 참조 |
 | `--maxpages N` | 최대 N페이지만 수집 (테스트용) | None (전체) |
+| `--from-raw` | 로컬 원본 데이터를 사용하여 재추출 실행 | - |
 | `--loglevel` | 로그 레벨 (DEBUG/INFO/WARNING/ERROR) | INFO |
 
 ---
