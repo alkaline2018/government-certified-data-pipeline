@@ -128,6 +128,10 @@ class FoodSafetyPipeline(BasePipeline):
             )
         return data
 
+    def _extract_records_from_raw(self, raw_data: dict) -> list[dict]:
+        """식약처 응답 dict에서 'row' 리스트를 추출한다."""
+        return raw_data.get(self.service_code, {}).get("row", [])
+
     # ------------------------------------------------------------------
     # 파이프라인 3단계
     # ------------------------------------------------------------------
@@ -139,11 +143,13 @@ class FoodSafetyPipeline(BasePipeline):
         """
         # 첫 페이지 호출로 total_count 파악
         first_data = self._fetch_page(1, self.per_page)
+        self.save_raw(first_data, 1) # 원본 저장
+
         body = first_data[self.service_code]
         total_count = int(body.get("total_count", 0))
         self.expected_total = total_count # 통계용 설정
         
-        rows = body.get("row", [])
+        rows = self._extract_records_from_raw(first_data)
         self._raw_pages.append(rows)
 
         logger.info(f"[{self.job_name}] 전체 건수: {total_count:,}건 | per_page={self.per_page}")
@@ -163,7 +169,9 @@ class FoodSafetyPipeline(BasePipeline):
             logger.info(f"[{self.job_name}] 페이지 {page_no}/{limit} ({start}~{end})")
 
             page_data = self._fetch_page(start, end)
-            page_rows = page_data[self.service_code].get("row", [])
+            self.save_raw(page_data, page_no) # 원본 저장
+            
+            page_rows = self._extract_records_from_raw(page_data)
             self._raw_pages.append(page_rows)
 
     def refine(self) -> None:
@@ -184,9 +192,11 @@ class FoodSafetyPipeline(BasePipeline):
 
                     refined[k] = val
 
-                # 메타 필드 추가
+                # 메타 필드 추가 (_source, _collected_at, _guid 등)
                 refined["_source"] = "foodsafetykorea"
                 refined["_service_code"] = self.service_code
+                self._add_metadata(refined)
+                
                 self._refined_records.append(refined)
 
     def extract(self) -> Path:
