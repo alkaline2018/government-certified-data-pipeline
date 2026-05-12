@@ -286,3 +286,63 @@ class SlackNotifier:
         filled = round(ratio / 100 * length)
         filled = max(0, min(length, filled))
         return "█" * filled + "░" * (length - filled)
+
+    def send_validation_result(self, results: list[dict], total_actual: int, total_expected: int):
+        """데이터 검증 결과를 Slack으로 전송한다."""
+        if not self.webhook_url:
+            return
+
+        overall_ratio = (total_actual / total_expected * 100) if total_expected > 0 else 0
+        status_emoji = "✅" if overall_ratio >= 99 else "⚠️" if overall_ratio >= 90 else "🚨"
+
+        blocks = [
+            {
+                "type": "header",
+                "text": {"type": "plain_text", "text": f"{status_emoji} 데이터 품질 검증 리포트", "emoji": True},
+            },
+            {
+                "type": "section",
+                "fields": [
+                    {"type": "mrkdwn", "text": f"*📦 총 수집량*\n*{total_actual:,}건* / {total_expected:,}건"},
+                    {"type": "mrkdwn", "text": f"*📈 전체 달성률*\n`{overall_ratio:.1f}%`"},
+                ],
+            },
+            {"type": "divider"},
+        ]
+
+        # 개별 파일 결과 추가
+        for res in results:
+            name = res["name"]
+            actual = res["actual"]
+            expected = res["expected"]
+            ratio = res["ratio"]
+            missing = res.get("missing_cols", [])
+            
+            # 아이콘 결정 (컬럼 누락은 무조건 빨간색)
+            if missing:
+                status = "🔴"
+                msg = f"*{name}* (컬럼 누락)\n누락됨: `{', '.join(missing)}`"
+            else:
+                status = "🟢" if ratio >= 99 else "🟡" if ratio >= 90 else "🔴"
+                msg = f"*{name}*\n{actual:,} / {expected:,} 건  `{ratio:.1f}%`"
+            
+            blocks.append({
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"{status} {msg}"
+                }
+            })
+
+        blocks.append({
+            "type": "context",
+            "elements": [
+                {"type": "mrkdwn", "text": f"🕐 {_now_kst()} KST  |  Government Data Pipeline"},
+            ],
+        })
+
+        payload = {
+            "blocks": blocks,
+            "attachments": [{"color": "#4bb543" if overall_ratio >= 99 else "#e8a020"}],
+        }
+        self._send(payload)
