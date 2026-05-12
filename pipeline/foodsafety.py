@@ -100,8 +100,6 @@ class FoodSafetyPipeline(BasePipeline):
         self.api_key = os.environ["FOODSAFETYKOREA_API_KEY"]
         # 작업명을 서비스별로 구분
         self.job_name = f"FoodSafety_{self.service_name}"
-        self.output_dir = self.output_dir.parent / self.job_name
-        self.output_dir.mkdir(parents=True, exist_ok=True)
 
     # ------------------------------------------------------------------
     # 내부 유틸
@@ -143,6 +141,8 @@ class FoodSafetyPipeline(BasePipeline):
         first_data = self._fetch_page(1, self.per_page)
         body = first_data[self.service_code]
         total_count = int(body.get("total_count", 0))
+        self.expected_total = total_count # 통계용 설정
+        
         rows = body.get("row", [])
         self._raw_pages.append(rows)
 
@@ -169,9 +169,6 @@ class FoodSafetyPipeline(BasePipeline):
     def refine(self) -> None:
         """
         [2단계] 원본 데이터 정제.
-        - 빈 문자열("") → None 변환
-        - 날짜 형식 정규화 (YYYYMMDD → YYYY-MM-DD)
-        - 파이프라인 메타 필드 추가 (_source, _service_code)
         """
         for page_rows in self._raw_pages:
             for row in page_rows:
@@ -193,6 +190,7 @@ class FoodSafetyPipeline(BasePipeline):
                 self._refined_records.append(refined)
 
     def extract(self) -> Path:
-        """[3단계] 정제된 데이터를 JSON 파일로 저장."""
-        filename = f"{self.service_name}_{self._today_str()}.json"
-        return self._save_json(self._refined_records, filename)
+        """[3단계] 정제된 데이터를 CSV 파일로 저장."""
+        filename = f"{self.job_name}_{self._today_str()}.csv"
+        return self._save_csv(self._refined_records, filename)
+
