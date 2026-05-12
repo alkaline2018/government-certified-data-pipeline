@@ -11,3 +11,9 @@ build/
 venv/
 output/
 *.log
+.idea/.gitignore
+.idea/government-certified-data-pipeline.iml
+.idea/misc.xml
+.idea/modules.xml
+.idea/vcs.xml
+.idea/inspectionProfiles/profiles_settings.xml
