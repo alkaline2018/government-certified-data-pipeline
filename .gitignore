@@ -10,6 +10,7 @@ build/
 .venv/
 venv/
 output/
+storage/
 *.log
 .idea/.gitignore
 .idea/government-certified-data-pipeline.iml
