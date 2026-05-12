@@ -1,0 +1,236 @@
+# ============================================================
+# dataset_catalog.yaml — Single Point of Truth
+# ============================================================
+# 이 파일 하나가 모든 데이터셋의 기준이 됩니다.
+#
+# - validate.py  : 행 수 + 컬럼 존재 여부 검증 시 이 파일을 참조합니다.
+# - generate_spec.py : DATA_SPEC.md 섹션 5 (컬럼 명세) 생성 시 이 파일을 참조합니다.
+#
+# 필드 설명:
+#   name            : 데이터셋 표시명 (사양서 헤더에 사용)
+#   file_prefix     : storage/output/ 내 CSV 파일명 앞부분 (날짜 제외)
+#   source          : 수집 출처 기관
+#   expected_count  : 마지막 API 확인 기준 예상 건수 (null이면 건수 체크 생략)
+#   tolerance_pct   : 달성률 허용 하한 (기본 99). 이 값 미만이면 FAIL 판정.
+#   columns         : 반드시 존재해야 할 컬럼 목록 (B안: 이 컬럼들이 모두 있으면 PASS)
+#   notes           : 특이사항 (DATA_SPEC.md에도 출력됨)
+# ============================================================
+
+datasets:
+
+  # ----------------------------------------------------------
+  # 공공데이터포털 (DataPortal)
+  # ----------------------------------------------------------
+
+  - name: "DataPortal_기술개발_우수기업"
+    file_prefix: "DataPortal_기술개발_우수기업"
+    source: "공공데이터포털"
+    expected_count: 111
+    tolerance_pct: 99
+    columns:
+      - "개발품목명"
+      - "과제번호"
+      - "기술개발 시작일"
+      - "기술개발 종료일"
+      - "내역사업명"
+      - "사업명"
+      - "사업자번호"
+      - "우수사례 선정년도"
+      - "주관기관"
+      - "지역"
+      - "_source"
+      - "_endpoint_key"
+      - "_collected_at"
+      - "_guid"
+    notes: "중소기업 기술개발 우수기업 현황. 과제번호(S/C 접두 코드) 포함."
+
+  - name: "DataPortal_기술개발제품_인증"
+    file_prefix: "DataPortal_기술개발제품_인증"
+    source: "공공데이터포털"
+    expected_count: 15108
+    tolerance_pct: 99
+    columns:
+      - "대표자"
+      - "만료일자"
+      - "사업자등록번호"
+      - "업체명"
+      - "인증구분"
+      - "인증번호"
+      - "인증일자"
+      - "인증제품명"
+      - "_source"
+      - "_endpoint_key"
+      - "_collected_at"
+      - "_guid"
+    notes: ""
+
+  - name: "DataPortal_성능인증_발급현황"
+    file_prefix: "DataPortal_성능인증_발급현황"
+    source: "공공데이터포털"
+    expected_count: 2991
+    tolerance_pct: 99
+    columns:
+      - "신청구분"
+      - "신청번호"
+      - "차수"
+      - "발급일자"
+      - "사업자등록번호"
+      - "업체명"
+      - "신청품목"
+      - "유효기간"
+      - "_source"
+      - "_endpoint_key"
+      - "_collected_at"
+      - "_guid"
+    notes: "원본 API 응답에 탭(\\t) 구분자 문자열 포함. 파이프라인이 자동 분리 처리함."
+
+  - name: "DataPortal_인재육성형_중소기업"
+    file_prefix: "DataPortal_인재육성형_중소기업"
+    source: "공공데이터포털"
+    expected_count: 557
+    tolerance_pct: 99
+    columns:
+      - "대표자명"
+      - "사업자번호"
+      - "상호"
+      - "선정일"
+      - "연번"
+      - "유효기간 종료일"
+      - "주생산품"
+      - "주소"
+      - "_source"
+      - "_endpoint_key"
+      - "_collected_at"
+      - "_guid"
+    notes: ""
+
+  - name: "DataPortal_전국_백년가게_현황"
+    file_prefix: "DataPortal_전국_백년가게_현황"
+    source: "공공데이터포털"
+    expected_count: 1262
+    tolerance_pct: 99
+    columns:
+      - "기본주소"
+      - "상세주소"
+      - "시군구"
+      - "시도"
+      - "업체명"
+      - "연락처"
+      - "연번"
+      - "주요사업"
+      - "_source"
+      - "_endpoint_key"
+      - "_collected_at"
+      - "_guid"
+    notes: ""
+
+  - name: "DataPortal_전국_백년소공인_지정"
+    file_prefix: "DataPortal_전국_백년소공인_지정"
+    source: "공공데이터포털"
+    expected_count: 981
+    tolerance_pct: 99
+    columns:
+      - "업체명"
+      - "업체주소"
+      - "연락처"
+      - "연번"
+      - "_source"
+      - "_endpoint_key"
+      - "_collected_at"
+      - "_guid"
+    notes: ""
+
+  - name: "DataPortal_창업기업확인서_정보"
+    file_prefix: "DataPortal_창업기업확인서_정보"
+    source: "공공데이터포털"
+    expected_count: 52201
+    tolerance_pct: 99
+    columns:
+      - "brno"
+      - "confmdoc_expr_dt"
+      - "confmdoc_isu_dt"
+      - "confmdoc_isu_no"
+      - "crno"
+      - "ntrp_nm"
+      - "ntrp_type_nm"
+      - "repr_nm"
+      - "unin_repr_nm"
+      - "_source"
+      - "_endpoint_key"
+      - "_collected_at"
+      - "_guid"
+    notes: "KISED(한국창업진흥원) API. 필드명이 영문 약어로 제공됨."
+
+  # ----------------------------------------------------------
+  # 식품의약품안전처 (FoodSafety)
+  # ----------------------------------------------------------
+
+  - name: "FoodSafety_HACCP_적용업소"
+    file_prefix: "FoodSafety_HACCP_적용업소"
+    source: "식품의약품안전처"
+    expected_count: 39008
+    tolerance_pct: 99
+    columns:
+      - "PRSDNT_NM"
+      - "SITE_ADDR"
+      - "LCNS_NO"
+      - "HACCP_APPN_DT"
+      - "PRDLST_NM"
+      - "BSSH_NM"
+      - "CRTFC_RETN_DT"
+      - "CLSBIZ_DT"
+      - "INDUTY_CD_NM"
+      - "HACCP_APPN_NO"
+      - "CRTFC_ENDDT"
+      - "CLSBIZ_DVS_CD_NM"
+      - "ASGN_CANCL_DT"
+      - "_source"
+      - "_service_code"
+      - "_collected_at"
+      - "_guid"
+    notes: "날짜 필드(YYYYMMDD)는 수집 시 YYYY-MM-DD 포맷으로 자동 변환됨."
+
+  - name: "FoodSafety_식품모범음식점"
+    file_prefix: "FoodSafety_식품모범음식점"
+    source: "식품의약품안전처"
+    expected_count: 24832
+    tolerance_pct: 90
+    columns:
+      - "OPERT_DT"
+      - "LCNS_NO"
+      - "YEAR"
+      - "APPN_DT"
+      - "BSSH_NM"
+      - "SIGNGU_NM"
+      - "APLC_DT"
+      - "PNCPL_FOOD_NM"
+      - "_source"
+      - "_service_code"
+      - "_collected_at"
+      - "_guid"
+    notes: >
+      기관 서버 제한으로 실제 수집량이 기대치에 미달할 수 있음.
+      허용 오차율을 90%로 완화 적용. 분석 시 유의 필요.
+
+  # ----------------------------------------------------------
+  # 고용24 / 워크넷 (Work24)
+  # ----------------------------------------------------------
+
+  - name: "Work24_청년친화강소기업"
+    file_prefix: "Work24_청년친화강소기업"
+    source: "고용24 (워크넷)"
+    expected_count: 224
+    tolerance_pct: 99
+    columns:
+      - "coNm"
+      - "busiNo"
+      - "reperNm"
+      - "superIndTpCd"
+      - "superIndTpNm"
+      - "indTpCd"
+      - "indTpNm"
+      - "_source"
+      - "_endpoint_key"
+      - "_collected_at"
+      - "_guid"
+    notes: "XML API 응답을 xmltodict로 파싱. 필드명이 영문 camelCase로 제공됨."
