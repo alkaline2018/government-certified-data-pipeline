@@ -69,6 +69,9 @@ class Work24Pipeline(BasePipeline):
     """
 
     def __init__(self, endpoint_key: str = "youth_friendly", per_page: int = 100, max_pages: int | None = None):
+        # 고용24 API는 한 번에 최대 100건(display)까지만 지원함.
+        # 만약 그 이상이 입력되면 100으로 제한하여 페이징이 정상 동작하게 함.
+        per_page = min(per_page, 100)
         super().__init__(per_page=per_page, max_pages=max_pages)
 
         if endpoint_key not in WORK24_ENDPOINTS:
@@ -81,8 +84,6 @@ class Work24Pipeline(BasePipeline):
         self.api_key = os.environ["WORK24_API_KEY"]
 
         self.job_name = f"Work24_{endpoint_key}"
-        self.output_dir = self.output_dir.parent / self.job_name
-        self.output_dir.mkdir(parents=True, exist_ok=True)
 
         # Accept 헤더를 XML로 덮어씌움
         self.session.headers.update({"Accept": "application/xml, text/xml, */*"})
@@ -133,6 +134,8 @@ class Work24Pipeline(BasePipeline):
         [1단계] startPage=1 호출로 <total> 파악 후 전체 페이지 순회.
         """
         total, first_records = self._fetch_and_parse(1)
+        self.expected_total = total
+        
         self._raw_pages.append(first_records)
 
         logger.info(
@@ -154,9 +157,6 @@ class Work24Pipeline(BasePipeline):
     def refine(self) -> None:
         """
         [2단계] XML → dict 로 변환된 원본 데이터 정제.
-        - xmltodict의 OrderedDict → 일반 dict 변환
-        - None 정규화 (OrderedDict None → Python None)
-        - 메타 필드 추가
         """
         for page_records in self._raw_pages:
             for record in page_records:
@@ -177,6 +177,7 @@ class Work24Pipeline(BasePipeline):
                 self._refined_records.append(refined)
 
     def extract(self) -> Path:
-        """[3단계] 정제된 데이터를 JSON 파일로 저장."""
-        filename = f"{self.endpoint_key}_{self._today_str()}.json"
-        return self._save_json(self._refined_records, filename)
+        """[3단계] 정제된 데이터를 CSV 파일로 저장."""
+        filename = f"{self.job_name}_{self._today_str()}.csv"
+        return self._save_csv(self._refined_records, filename)
+
