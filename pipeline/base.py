@@ -48,50 +48,42 @@ class BasePipeline(ABC):
     def __init__(self, per_page: int = 1000, max_pages: int | None = None):
         self.job_name: str = self.__class__.__name__
         self.per_page: int = per_page
-        self.max_pages: int | None = max_pages  # None이면 전체 수집 (운영), 정수면 최대 페이지 수 제한 (테스트)
-        self.output_dir: Path = Path("output") / self.job_name
+        self.max_pages: int | None = max_pages
+        # 모든 CSV 파일을 한 폴더에 저장하도록 변경
+        self.output_dir: Path = Path("output") / "csv_export"
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.notifier = SlackNotifier()
 
-        # 공통 HTTP 세션 (Keep-Alive, 타임아웃 기본값 설정)
+        # 공통 HTTP 세션
         self.session = requests.Session()
         self.session.headers.update({"Accept": "application/json"})
 
-        # 수집된 원본 데이터 버퍼
+        # 수집 통계 및 버퍼
+        self.total_requests = 0
+        self.success_requests = 0
+        self.expected_total = 0  # API에서 제공하는 전체 건수
         self._raw_pages: list[list[dict]] = []
-        # 정제된 데이터 버퍼
         self._refined_records: list[dict] = []
 
     # ------------------------------------------------------------------
-    # 추상 메서드 (각 기관 클래스에서 반드시 구현)
+    # 추상 메서드
     # ------------------------------------------------------------------
 
     @abstractmethod
     def collect(self) -> None:
-        """
-        [1단계] API를 호출해 원본 데이터를 self._raw_pages 에 누적한다.
-        페이징이 있는 경우 전체 페이지를 순회한다.
-        """
         ...
 
     @abstractmethod
     def refine(self) -> None:
-        """
-        [2단계] self._raw_pages 를 읽어 불필요한 필드 제거, 타입 변환,
-        null 처리 등 정제 작업을 수행하고 self._refined_records 에 저장한다.
-        """
         ...
 
     @abstractmethod
     def extract(self) -> Path:
-        """
-        [3단계] self._refined_records 를 최종 출력 파일(JSON)로 저장하고
-        저장된 경로(Path)를 반환한다.
-        """
+        """[3단계] 정제된 데이터를 CSV 파일로 저장하고 경로 반환."""
         ...
 
     # ------------------------------------------------------------------
-    # 공통 HTTP 요청 (재시도 로직 내장)
+    # 공통 HTTP 요청
     # ------------------------------------------------------------------
 
     @retry(
@@ -108,24 +100,25 @@ class BasePipeline(ABC):
         reraise=True,
     )
     def _get(self, url: str, params: dict | None = None, **kwargs) -> requests.Response:
-        """
-        GET 요청 + 자동 재시도.
-        5xx 오류는 HTTPError를 raise해 재시도 대상으로 포함시킨다.
-        """
-        resp = self.session.get(url, params=params, timeout=30, **kwargs)
-        if resp.status_code >= 500:
-            resp.raise_for_status()  # 5xx → HTTPError → 재시도
-        resp.raise_for_status()  # 4xx는 즉시 실패
-        return resp
+        self.total_requests += 1
+        try:
+            resp = self.session.get(url, params=params, timeout=30, **kwargs)
+            if resp.status_code >= 500:
+                resp.raise_for_status()
+            resp.raise_for_status()
+            self.success_requests += 1
+            return resp
+        except Exception:
+            raise
 
     # ------------------------------------------------------------------
     # 파이프라인 실행 진입점
     # ------------------------------------------------------------------
 
-    def run(self) -> None:
+    def run(self) -> dict:
         """
-        collect → refine → extract 를 순서대로 실행하고,
-        결과를 Slack으로 알린다.
+        collect -> refine -> extract 를 순차 실행.
+        결과 통계를 딕셔너리로 반환.
         """
         start_ts = datetime.now()
         logger.info("=" * 60)
@@ -133,55 +126,86 @@ class BasePipeline(ABC):
         logger.info("=" * 60)
 
         try:
-            # 1단계: 수집
-            logger.info(f"[{self.job_name}] STEP 1/3 → collect() 시작")
             self.collect()
             total_raw = sum(len(p) for p in self._raw_pages)
-            logger.info(f"[{self.job_name}] STEP 1/3 → collect() 완료 | 원본 {total_raw}건")
+            logger.info(f"[{self.job_name}] collect() 완료 | 원본 {total_raw}건")
 
-            # 2단계: 정제
-            logger.info(f"[{self.job_name}] STEP 2/3 → refine() 시작")
             self.refine()
-            logger.info(
-                f"[{self.job_name}] STEP 2/3 → refine() 완료 | 정제 {len(self._refined_records)}건"
-            )
+            logger.info(f"[{self.job_name}] refine() 완료 | 정제 {len(self._refined_records)}건")
 
-            # 3단계: 추출
-            logger.info(f"[{self.job_name}] STEP 3/3 → extract() 시작")
             output_path = self.extract()
-            logger.info(f"[{self.job_name}] STEP 3/3 → extract() 완료 | 파일: {output_path}")
+            logger.info(f"[{self.job_name}] extract() 완료 | 파일: {output_path}")
 
-            # Slack 성공 알림
+            # S3 업로드 (현재는 비활성화)
+            self._upload_to_s3(output_path)
+
             elapsed = (datetime.now() - start_ts).seconds
-            self.notifier.send_success(
-                job_name=self.job_name,
-                record_count=len(self._refined_records),
-                output_path=str(output_path),
-                elapsed_sec=elapsed,
-            )
+            
+            stats = {
+                "job_name": self.job_name,
+                "record_count": len(self._refined_records),
+                "expected_total": self.expected_total,
+                "total_requests": self.total_requests,
+                "success_requests": self.success_requests,
+                "output_path": str(output_path),
+                "elapsed_sec": elapsed,
+                "status": "SUCCESS"
+            }
+
+            # 개별 작업 Slack 알림
+            self.notifier.send_success(**stats)
+            return stats
 
         except Exception as exc:
             elapsed = (datetime.now() - start_ts).seconds
             logger.exception(f"[{self.job_name}] 파이프라인 최종 실패: {exc}")
-            # Slack 실패 알림
-            self.notifier.send_failure(
-                job_name=self.job_name,
-                error_msg=str(exc),
-                elapsed_sec=elapsed,
-            )
-            raise  # 상위(Airflow 등)에서 실패 감지할 수 있도록 재raise
+            
+            stats = {
+                "job_name": self.job_name,
+                "error_msg": str(exc),
+                "total_requests": self.total_requests,
+                "success_requests": self.success_requests,
+                "elapsed_sec": elapsed,
+                "status": "FAILURE"
+            }
+            
+            self.notifier.send_failure(**stats)
+            raise
 
     # ------------------------------------------------------------------
     # 공통 유틸리티
     # ------------------------------------------------------------------
 
-    def _save_json(self, data: list[dict], filename: str) -> Path:
-        """정제된 records를 output_dir 에 JSON 파일로 저장한다."""
+    def _save_csv(self, data: list[dict], filename: str) -> Path:
+        """정제된 records를 CSV 파일로 저장 (탭 구분자 사용)."""
+        import csv
         filepath = self.output_dir / filename
-        with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        logger.info(f"[{self.job_name}] JSON 저장 완료: {filepath} ({len(data)}건)")
+        
+        if not data:
+            logger.warning(f"[{self.job_name}] 저장할 데이터가 없습니다.")
+            return filepath
+
+        keys = data[0].keys()
+        with open(filepath, "w", encoding="utf-8-sig", newline="") as f:
+            # ‡ 를 구분자로 사용하여 데이터 내 특수문자 문제를 방지
+            writer = csv.DictWriter(f, fieldnames=keys, delimiter="‡")
+            writer.writeheader()
+            writer.writerows(data)
+            
+        logger.info(f"[{self.job_name}] CSV 저장 완료: {filepath} ({len(data)}건)")
         return filepath
+
+    def _upload_to_s3(self, file_path: Path) -> None:
+        """S3 업로드 로직 (현재는 동작하지 않음)."""
+        # TODO: AWS 설정 및 boto3 클라이언트 초기화 필요
+        # s3_enabled = os.getenv("S3_UPLOAD_ENABLED", "FALSE").upper() == "TRUE"
+        s3_enabled = False # 명시적으로 비활성화
+        
+        if s3_enabled:
+            logger.info(f"[{self.job_name}] S3 업로드 시도: {file_path.name}")
+            # upload_file_to_s3(file_path)
+        else:
+            logger.info(f"[{self.job_name}] S3 업로드가 비활성화되어 있습니다.")
 
     def _today_str(self) -> str:
         return datetime.now().strftime("%Y%m%d")
