@@ -4,7 +4,7 @@
 *   **포맷**: CSV (Flat File)
 *   **인코딩**: UTF-8 with BOM (`utf-8-sig`)
 *   **구분자(Delimiter)**: `‡` (Double Dagger)
-*   **저장 경로**: `storage/output/{JOB_NAME}_{YYYYMMDD}.csv` 
+*   **저장 경로**: `storage/output/YYYY/MM/{JOB_NAME}_{YYYYMMDD}.csv` 
 
 ## 2. 공통 정제 규칙 (General Normalization)
 | 항목 | 적용 내용 |

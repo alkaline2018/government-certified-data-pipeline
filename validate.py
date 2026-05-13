@@ -34,8 +34,8 @@ def validate():
     total_expected = 0
     results = []
     
-    # storage/output/ 폴더 내의 CSV 파일 탐색
-    csv_files = sorted(glob.glob("storage/output/*.csv"))
+    # storage/output/ 폴더 내의 CSV 파일 재귀 탐색
+    csv_files = sorted(glob.glob("storage/output/**/*.csv", recursive=True))
     
     if not csv_files:
         print("검증할 CSV 파일이 storage/output/ 폴더에 없습니다.")

@@ -51,10 +51,8 @@ class BasePipeline(ABC):
         self.per_page: int = per_page
         self.max_pages: int | None = max_pages
         
-        # 저장 구조 개편: storage/output
-        self.output_dir = Path("storage") / "output"
-        
-        self.output_dir.mkdir(parents=True, exist_ok=True)
+        # 저장 구조 개편: storage/output (하위 연/월 폴더는 저장 시 동적으로 생성)
+        self.output_base_dir = Path("storage") / "output"
         self.notifier = SlackNotifier()
 
         # 수집 시점 고정 (모든 레코드에 동일하게 적용)
@@ -73,8 +71,17 @@ class BasePipeline(ABC):
 
     @property
     def raw_dir(self) -> Path:
-        """현재 작업명과 날짜에 기반한 원본 데이터 저장 경로."""
-        return Path("storage") / "raw" / self.job_name / self._today_str()
+        """
+        원본 데이터를 저장할 디렉토리 경로.
+        구조: storage/raw/YYYY/MM/{job_name}_{YYYYMMDD}/
+        """
+        now = datetime.now()
+        year = now.strftime("%Y")
+        month = now.strftime("%m")
+        today = self._today_str()
+        
+        path = Path("storage") / "raw" / year / month / f"{self.job_name}_{today}"
+        return path
 
     # ------------------------------------------------------------------
     # 추상 메서드
@@ -105,7 +112,7 @@ class BasePipeline(ABC):
     def save_raw(self, data: list[dict] | dict, page_no: int) -> None:
         """API에서 받은 원본 데이터를 로컬 storage/raw/ 에 저장한다."""
         self.raw_dir.mkdir(parents=True, exist_ok=True)
-        file_path = self.raw_dir / f"page_{page_no:04d}.json"
+        file_path = self.raw_dir / f"{page_no:04d}.json"
         try:
             with open(file_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
@@ -119,6 +126,7 @@ class BasePipeline(ABC):
             logger.error(f"[{self.job_name}] 로드할 원본 데이터가 없습니다: {self.raw_dir}")
             return False
 
+        # 숫자로 된 모든 json 파일 찾기
         files = sorted([f for f in os.listdir(self.raw_dir) if f.endswith(".json")])
         if not files:
             return False
@@ -243,7 +251,15 @@ class BasePipeline(ABC):
     def _save_csv(self, data: list[dict], filename: str) -> Path:
         """정제된 records를 CSV 파일로 저장 (탭 구분자 사용)."""
         import csv
-        filepath = self.output_dir / filename
+        
+        # 저장 경로 구조화: storage/output/YYYY/MM/
+        now = datetime.now()
+        year = now.strftime("%Y")
+        month = now.strftime("%m")
+        output_dir = self.output_base_dir / year / month
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        filepath = output_dir / filename
         
         if not data:
             logger.warning(f"[{self.job_name}] 저장할 데이터가 없습니다.")

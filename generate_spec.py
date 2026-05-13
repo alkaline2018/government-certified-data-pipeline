@@ -17,7 +17,7 @@ def generate_spec():
     md.append('*   **포맷**: CSV (Flat File)')
     md.append('*   **인코딩**: UTF-8 with BOM (`utf-8-sig`)')
     md.append('*   **구분자(Delimiter)**: `‡` (Double Dagger)')
-    md.append('*   **저장 경로**: `storage/output/{JOB_NAME}_{YYYYMMDD}.csv` \n')
+    md.append('*   **저장 경로**: `storage/output/YYYY/MM/{JOB_NAME}_{YYYYMMDD}.csv` \n')
 
     md.append('## 2. 공통 정제 규칙 (General Normalization)')
     md.append('| 항목 | 적용 내용 |')
