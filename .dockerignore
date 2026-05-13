@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# 가상환경
+.venv/
+venv/
+env/
+
+# 환경변수 (민감 정보)
+.env
+
+# 로컬 수집 데이터 (이미지에 포함 불필요)
+storage/
+output/
+
+# 로그
+*.log
+pipeline.log
+
+# 개발 도구
+.idea/
+.vscode/
+*.iml
+
+# Git
+.git/
+.gitignore
+
+# GitHub Actions (컨테이너 내부 불필요)
+.github/
+
+# 진단/유틸 스크립트 (운영 불필요)
+diagnose_*.py
+extract_headers.py
+generate_spec.py
+headers_raw.txt
+validate.py
+run_all.py
+
+# 문서
+*.md
+DATA_SPEC.md
+README.md
+dataset_catalog.yaml
