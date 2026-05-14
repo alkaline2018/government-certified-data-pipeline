@@ -3,6 +3,7 @@ import os
 import sys
 import boto3
 import shutil
+import zipfile         # unzip 명령어 대신 안전하게 사용
 from pathlib import Path
 
 # ==========================================
@@ -29,10 +30,15 @@ print(f">>> 작업 시작 디렉토리: {BASE_DIR}")
 # 2. 소스코드 및 라이브러리 준비
 # ==========================================
 
-# 1) wget으로 ZIP 다운로드 후 unzip (git 불필요)
+# 1) curl로 ZIP 다운로드 (git/wget 불필요)
 ZIP_URL = "https://github.com/alkaline2018/government-certified-data-pipeline/archive/refs/heads/main.zip"
-subprocess.run(f"wget -q -O {ZIP_PATH} {ZIP_URL}", shell=True, check=True)
-subprocess.run(f"unzip -q {ZIP_PATH} -d {BASE_DIR}", shell=True, check=True)
+print(f">>> curl로 코드 다운로드 중...")
+subprocess.run(f"curl -L -o {ZIP_PATH} {ZIP_URL}", shell=True, check=True)
+
+# 2) 파이썬 내장 zipfile 모듈로 압축 해제 (unzip 명령어 불필요)
+print(f">>> 압축 해제 중...")
+with zipfile.ZipFile(ZIP_PATH, 'r') as zip_ref:
+    zip_ref.extractall(BASE_DIR)
 print(f">>> 코드 준비 완료: {REPO_DIR}")
 
 # 2) 라이브러리 설치
