@@ -32,6 +32,7 @@ import argparse
 import logging
 import sys
 from pathlib import Path
+from typing import List, Dict, Tuple, Union, Optional
 
 from dotenv import load_dotenv
 
@@ -69,7 +70,7 @@ def build_job_registry() -> dict:
     from pipeline.dataportal import DataPortalPipeline, DATAPORTAL_ENDPOINTS
     from pipeline.work24 import Work24Pipeline, WORK24_ENDPOINTS
 
-    registry: dict[str, tuple] = {}
+    registry: Dict[str, Tuple] = {}
 
     # --- 식약처 ---
     for svc_key in FOODSAFETY_SERVICES:
@@ -168,9 +169,9 @@ def _run_single_job(
     pipeline_cls,
     kwargs: dict,
     per_page: int,
-    max_pages: int | None,
+    max_pages: Optional[int],
     from_raw: bool = False,
-) -> dict | None:
+) -> Optional[Dict]:
     """단일 파이프라인 인스턴스를 실행하고 stats dict를 반환한다."""
     try:
         pipeline = pipeline_cls(**kwargs, per_page=per_page, max_pages=max_pages)
@@ -183,7 +184,7 @@ def run_job(
     job_id: str,
     per_page: int,
     registry: dict,
-    max_pages: int | None = None,
+    max_pages: Optional[int] = None,
     from_raw: bool = False,
     send_summary: bool = False,
     batch_name: str = "전체 수집 작업",
@@ -199,7 +200,7 @@ def run_job(
 
     spec = registry[job_id]
     pipeline_cls, kwargs = spec
-    results: list[dict] = []
+    results: List[Dict] = []
     start_time = datetime.now()
     logger = logging.getLogger(__name__)
 
@@ -233,7 +234,7 @@ def run_job(
     return results
 
 
-def run_schedule(per_page: int | None, max_pages: int | None, registry: dict, from_raw: bool = False) -> None:
+def run_schedule(per_page: Optional[int], max_pages: Optional[int], registry: dict, from_raw: bool = False) -> None:
     """schedule_config.py 기준으로 오늘 실행 대상 Job을 모두 실행한다."""
     from pipeline.schedule_config import get_jobs_due_today, SCHEDULE_CONFIG
     from pipeline.notifier import SlackNotifier
@@ -247,7 +248,7 @@ def run_schedule(per_page: int | None, max_pages: int | None, registry: dict, fr
         return
 
     logger.info(f"오늘 실행 대상 {len(today_jobs)}개 Job: {today_jobs}")
-    all_results: list[dict] = []
+    all_results: List[Dict] = []
     start_time = datetime.now()
 
     for job_id in today_jobs:

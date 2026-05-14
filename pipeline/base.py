@@ -12,7 +12,7 @@ import uuid
 from abc import ABC, abstractmethod
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, List, Dict, Union, Optional
 
 import requests
 from tenacity import (
@@ -46,10 +46,10 @@ class BasePipeline(ABC):
         requests.exceptions.HTTPError,
     )
 
-    def __init__(self, per_page: int = 1000, max_pages: int | None = None):
+    def __init__(self, per_page: int = 1000, max_pages: Optional[int] = None):
         self.job_name: str = self.__class__.__name__
         self.per_page: int = per_page
-        self.max_pages: int | None = max_pages
+        self.max_pages: Optional[int] = max_pages
         
         # 저장 구조 개편: storage/output (하위 연/월 폴더는 저장 시 동적으로 생성)
         self.output_base_dir = Path("storage") / "output"
@@ -109,7 +109,7 @@ class BasePipeline(ABC):
     # 로컬 저장 및 로드 (Persistence)
     # ------------------------------------------------------------------
 
-    def save_raw(self, data: list[dict] | dict, page_no: int) -> None:
+    def save_raw(self, data: Union[List[dict], dict], page_no: int) -> None:
         """API에서 받은 원본 데이터를 로컬 storage/raw/ 에 저장한다."""
         self.raw_dir.mkdir(parents=True, exist_ok=True)
         file_path = self.raw_dir / f"{page_no:04d}.json"
@@ -165,7 +165,7 @@ class BasePipeline(ABC):
         before_sleep=before_sleep_log(logger, logging.WARNING),
         reraise=True,
     )
-    def _get(self, url: str, params: dict | None = None, **kwargs) -> requests.Response:
+    def _get(self, url: str, params: Optional[dict] = None, **kwargs) -> requests.Response:
         self.total_requests += 1
         try:
             resp = self.session.get(url, params=params, timeout=30, **kwargs)

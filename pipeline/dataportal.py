@@ -29,6 +29,7 @@ pipeline/dataportal.py
 import logging
 import math
 import os
+from typing import Dict, Tuple, Optional, List # 추가
 
 from pipeline.base import BasePipeline
 from pathlib import Path
@@ -40,7 +41,7 @@ logger = logging.getLogger(__name__)
 # job_key → (endpoint_url, 한글명)
 # URL이 변경될 경우 이 딕셔너리만 수정하면 된다.
 # ------------------------------------------------------------------
-DATAPORTAL_ENDPOINTS: dict[str, tuple[str, str]] = {
+DATAPORTAL_ENDPOINTS: Dict[str, Tuple[str, str]] = {
     "tech_excellence": (
         "https://api.odcloud.kr/api/15025589/v1/uddi:0dc2205a-331b-4b9a-89ea-86819ccb30c7",
         "기술개발_우수기업",
@@ -81,7 +82,7 @@ class DataPortalPipeline(BasePipeline):
         per_page (int): 페이지당 수집 건수 (테스트: 1, 운영: 1000)
     """
 
-    def __init__(self, endpoint_key: str = "tech_excellence", per_page: int = 1000, max_pages: int | None = None):
+    def __init__(self, endpoint_key: str = "tech_excellence", per_page: int = 1000, max_pages: Optional[int] = None):
         super().__init__(per_page=per_page, max_pages=max_pages)
 
         if endpoint_key not in DATAPORTAL_ENDPOINTS:

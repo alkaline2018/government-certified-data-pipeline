@@ -62,6 +62,7 @@ pipeline/foodsafety.py
 import logging
 import math
 import os
+from typing import Optional, List, Dict # 추가
 
 from pipeline.base import BasePipeline
 from pathlib import Path
@@ -87,7 +88,7 @@ class FoodSafetyPipeline(BasePipeline):
         per_page (int): 페이지당 수집 건수 (테스트: 1, 운영: 1000)
     """
 
-    def __init__(self, service_key: str = "haccp", per_page: int = 1000, max_pages: int | None = None):
+    def __init__(self, service_key: str = "haccp", per_page: int = 1000, max_pages: Optional[int] = None):
         super().__init__(per_page=per_page, max_pages=max_pages)
 
         if service_key not in FOODSAFETY_SERVICES:

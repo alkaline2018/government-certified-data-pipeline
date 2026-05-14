@@ -39,6 +39,7 @@ pipeline/work24.py
 import logging
 import math
 import os
+from typing import Dict, Tuple, Optional, List # 추가
 
 import xmltodict
 
@@ -50,7 +51,7 @@ logger = logging.getLogger(__name__)
 # ------------------------------------------------------------------
 # 수집 대상 엔드포인트 레지스트리
 # ------------------------------------------------------------------
-WORK24_ENDPOINTS: dict[str, tuple[str, str, str]] = {
+WORK24_ENDPOINTS: Dict[str, Tuple[str, str, str]] = {
     "youth_friendly": (
         "https://www.work24.go.kr/cm/openApi/call/wk/callOpenApiSvcInfo216L31.do",
         "smallGiantsList",   # XML 루트 태그명
@@ -68,7 +69,7 @@ class Work24Pipeline(BasePipeline):
         per_page (int): 페이지당 수집 건수 (테스트: 1, 운영: 100)
     """
 
-    def __init__(self, endpoint_key: str = "youth_friendly", per_page: int = 100, max_pages: int | None = None):
+    def __init__(self, endpoint_key: str = "youth_friendly", per_page: int = 100, max_pages: Optional[int] = None):
         # 고용24 API는 한 번에 최대 100건(display)까지만 지원함.
         # 만약 그 이상이 입력되면 100으로 제한하여 페이징이 정상 동작하게 함.
         per_page = min(per_page, 100)

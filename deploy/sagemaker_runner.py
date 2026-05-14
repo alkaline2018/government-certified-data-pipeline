@@ -6,6 +6,7 @@ import shutil
 import urllib.request  # 추가
 import zipfile         # unzip 명령어 대신 안전하게 사용
 from pathlib import Path
+from typing import List, Union, Optional  # Python 3.9 호환성을 위해 추가
 
 # ==========================================
 # 1. 환경 설정 및 경로 정의
@@ -87,7 +88,7 @@ subprocess.run(
 # ==========================================
 s3_client = boto3.client('s3')
 
-def upload_to_s3(local_dir, bucket, prefix):
+def upload_to_s3(local_dir: Union[str, Path], bucket: str, prefix: str) -> bool:
     path_root = Path(local_dir)
     if not path_root.exists():
         print(f"❌ 데이터 폴더가 생성되지 않았습니다: {local_dir}")
