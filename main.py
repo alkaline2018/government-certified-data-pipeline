@@ -68,7 +68,7 @@ def build_job_registry() -> dict:
     """
     from pipeline.foodsafety import FoodSafetyPipeline, FOODSAFETY_SERVICES
     from pipeline.dataportal import DataPortalPipeline, DATAPORTAL_ENDPOINTS
-    from pipeline.work24 import Work24Pipeline, WORK24_ENDPOINTS
+    from pipeline.work24 import Work24Pipeline, WORK24_ENDPOINTS, EmploymentSmallGiantsPipeline
 
     registry: Dict[str, Tuple] = {}
 
@@ -85,10 +85,12 @@ def build_job_registry() -> dict:
     # --- 공공데이터포털 (전체 일괄) ---
     registry["dataportal_all"] = ("__special__", {"type": "dataportal_all"})
 
-    # --- 고용24 ---
+    # --- 고용24 / 고용노동부 ---
     for ep_key in WORK24_ENDPOINTS:
         job_id = f"work24_{ep_key}"
         registry[job_id] = (Work24Pipeline, {"endpoint_key": ep_key})
+
+    registry["work24_small_giants"] = (EmploymentSmallGiantsPipeline, {})
 
     return registry
 
