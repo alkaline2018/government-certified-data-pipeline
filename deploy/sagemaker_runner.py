@@ -13,7 +13,9 @@ S3_PREFIX = "di/government-certified-data-pipeline"
 
 # 모든 작업은 /tmp 내부에서 수행 (권한 보장)
 BASE_DIR  = "/tmp/pipeline_job"
-REPO_DIR  = os.path.join(BASE_DIR, "government-certified-data-pipeline")
+ZIP_PATH  = os.path.join(BASE_DIR, "repo.zip")
+# GitHub ZIP 해제 시 생성되는 폴더명: {repo-name}-{branch}
+REPO_DIR  = os.path.join(BASE_DIR, "government-certified-data-pipeline-main")
 LOCAL_STORAGE = os.path.join(REPO_DIR, "storage")
 
 # 깨끗한 환경을 위해 기존 폴더 삭제 후 생성
@@ -27,11 +29,11 @@ print(f">>> 작업 시작 디렉토리: {BASE_DIR}")
 # 2. 소스코드 및 라이브러리 준비
 # ==========================================
 
-# 1) Git Clone
-subprocess.run(
-    f"git clone https://github.com/alkaline2018/government-certified-data-pipeline.git {REPO_DIR}",
-    shell=True, check=True
-)
+# 1) wget으로 ZIP 다운로드 후 unzip (git 불필요)
+ZIP_URL = "https://github.com/alkaline2018/government-certified-data-pipeline/archive/refs/heads/main.zip"
+subprocess.run(f"wget -q -O {ZIP_PATH} {ZIP_URL}", shell=True, check=True)
+subprocess.run(f"unzip -q {ZIP_PATH} -d {BASE_DIR}", shell=True, check=True)
+print(f">>> 코드 준비 완료: {REPO_DIR}")
 
 # 2) 라이브러리 설치
 subprocess.run(
