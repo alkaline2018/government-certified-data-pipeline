@@ -59,13 +59,13 @@ class SlackNotifier:
     ) -> None:
         """파이프라인 성공 시 Block Kit 기반 상세 메시지를 전송한다."""
         # 달성률 계산
-        if expected_total > 0:
+        if expected_total and expected_total > 0:
             ratio = record_count / expected_total * 100
             ratio_str = f"{ratio:.1f}%"
             bar = self._progress_bar(ratio)
             count_line = f"*{record_count:,}건* / {expected_total:,}건  {bar}  `{ratio_str}`"
         else:
-            count_line = f"*{record_count:,}건* (예상 건수 없음)"
+            count_line = f"*{record_count:,}건* (기준 건수 없음)"
 
         # 파일명만 추출 (경로 제거)
         filename = output_path.split("\\")[-1] if "\\" in output_path else output_path.split("/")[-1]
@@ -164,7 +164,7 @@ class SlackNotifier:
         success_list = [r for r in results if r.get("status") == "SUCCESS"]
         failure_list = [r for r in results if r.get("status") != "SUCCESS"]
         total_records = sum(r.get("record_count", 0) for r in success_list)
-        total_expected = sum(r.get("expected_total", 0) for r in success_list)
+        total_expected = sum((r.get("expected_total") or 0) for r in success_list)
 
         overall_ratio = (total_records / total_expected * 100) if total_expected > 0 else 0
         bar = self._progress_bar(overall_ratio)
@@ -190,7 +190,7 @@ class SlackNotifier:
                         "type": "mrkdwn",
                         "text": (
                             f"*📦 총 수집량*\n"
-                            f"*{total_records:,}건* / {total_expected:,}건\n"
+                            f"*{total_records:,}건* / {f'{total_expected:,}건' if total_expected else 'N/A'}\n"
                             f"{bar}  `{overall_ratio:.1f}%`"
                         ),
                     },
@@ -224,11 +224,12 @@ class SlackNotifier:
         for r in results:
             if r.get("status") == "SUCCESS":
                 cnt = r.get("record_count", 0)
-                exp = r.get("expected_total", 0)
-                r_pct = f"{cnt/exp*100:.0f}%" if exp > 0 else "N/A"
+                exp = r.get("expected_total")
+                r_pct = f"{cnt/exp*100:.0f}%" if exp and exp > 0 else "N/A"
+                exp_str = f"{exp:,}건" if exp else "N/A"
                 job_fields.append({
                     "type": "mrkdwn",
-                    "text": f"✅ *{r['job_name']}*\n{cnt:,}건 / {exp:,}건  `{r_pct}`",
+                    "text": f"✅ *{r['job_name']}*\n{cnt:,}건 / {exp_str}  `{r_pct}`",
                 })
             else:
                 job_fields.append({
@@ -303,7 +304,7 @@ class SlackNotifier:
             {
                 "type": "section",
                 "fields": [
-                    {"type": "mrkdwn", "text": f"*📦 총 수집량*\n*{total_actual:,}건* / {total_expected:,}건"},
+                    {"type": "mrkdwn", "text": f"*📦 총 수집량*\n*{total_actual:,}건* / {f'{total_expected:,}건' if total_expected else 'N/A'}"},
                     {"type": "mrkdwn", "text": f"*📈 전체 달성률*\n`{overall_ratio:.1f}%`"},
                 ],
             },
@@ -324,7 +325,8 @@ class SlackNotifier:
                 msg = f"*{name}* (컬럼 누락)\n누락됨: `{', '.join(missing)}`"
             else:
                 status = "🟢" if ratio >= 99 else "🟡" if ratio >= 90 else "🔴"
-                msg = f"*{name}*\n{actual:,} / {expected:,} 건  `{ratio:.1f}%`"
+                exp_str = f"{expected:,}" if expected else "N/A"
+                msg = f"*{name}*\n{actual:,} / {exp_str} 건  `{ratio:.1f}%`"
             
             blocks.append({
                 "type": "section",
