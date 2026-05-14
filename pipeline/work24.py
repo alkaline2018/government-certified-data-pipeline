@@ -39,9 +39,13 @@ pipeline/work24.py
 import logging
 import math
 import os
-from typing import Dict, Tuple, Optional, List # 추가
+import zipfile         # 추가
+import shutil          # 추가
+from typing import Dict, Tuple, Optional, List, Any, Union # Any, Union 추가
 
 import xmltodict
+import requests        # 추가
+import openpyxl        # 추가
 
 from pipeline.base import BasePipeline
 from pathlib import Path
@@ -93,7 +97,7 @@ class Work24Pipeline(BasePipeline):
     # 내부 유틸
     # ------------------------------------------------------------------
 
-    def _build_params(self, start_page: int) -> dict:
+    def _build_params(self, start_page: int) -> Dict:
         return {
             "authKey": self.api_key,
             "returnType": "XML",
@@ -101,7 +105,7 @@ class Work24Pipeline(BasePipeline):
             "display": self.per_page,
         }
 
-    def _fetch_and_parse(self, start_page: int) -> tuple[int, list[dict]]:
+    def _fetch_and_parse(self, start_page: int) -> Tuple[int, List[Dict]]:
         """
         단일 페이지 요청 → (total, records) 반환.
         xmltodict로 XML을 파싱한 후 레코드 리스트를 반환한다.
@@ -126,7 +130,7 @@ class Work24Pipeline(BasePipeline):
 
         return total, raw_records
 
-    def _extract_records_from_raw(self, raw_data: dict) -> list[dict]:
+    def _extract_records_from_raw(self, raw_data: Dict) -> List[Dict]:
         """워크넷 응답 dict에서 레코드 리스트를 추출한다."""
         root = raw_data.get(self.root_tag, {})
         raw_records = root.get(self.record_tag, [])
@@ -203,4 +207,97 @@ class Work24Pipeline(BasePipeline):
         """[3단계] 정제된 데이터를 CSV 파일로 저장."""
         filename = f"{self.job_name}_{self._today_str()}.csv"
         return self._save_csv(self._refined_records, filename)
+
+
+class EmploymentSmallGiantsPipeline(BasePipeline):
+    """
+    고용노동부 강소기업 명단 수집 파이프라인.
+    """
+
+    DOWNLOAD_URL = "https://www.work.go.kr/framework/filedownload/keisDownload.do?filePathName=oHBzib3Tsgxld0j94wJVE8nwpmxv7UvLLE4wk5KpcRJkPBYwuwPkQyPbUrhz2gBDKrWsM8stQ85pK%2BgLzEJ2wQ%3D%3D&realFileNm=MjAyNOuFhOuPhCDqs6Dsmqnrhbjrj5nrtoAg7ISg7KCVIOqwleyGjOq4sOyXhSDrqoXri6go6rKM7Iuc7JqpKS56aXA%3D"
+    
+    HEADERS = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
+        "Referer": "https://www.work.go.kr/jobyoung/smallGiants/corpInfoSrchList.do?coGbCd=small",
+        "Cookie": "WMONID=N0s2yj-_qNl; PCID=17782056277088037627321; isOffer=Y; WORKNETSESSIONID=47ElPEbwuhZD9hj7lI9JHSY3I47nxbYhYyK8jnW7sbbq7-HMbN7C!-1500919948!440871721"
+    }
+
+    def __init__(self, per_page: int = 1000, max_pages: Optional[int] = None):
+        super().__init__(per_page=per_page, max_pages=max_pages)
+        self.job_name = "Work24_강소기업_명단"
+        self._extracted_files: List[Path] = []
+
+    def collect(self) -> None:
+        """[1단계] ZIP 파일 다운로드 및 압축 해제."""
+        logger.info(f"[{self.job_name}] 다운로드 시작: {self.DOWNLOAD_URL}")
+        self.raw_dir.mkdir(parents=True, exist_ok=True)
+        zip_path = self.raw_dir / "downloaded_data.zip"
+
+        import urllib3
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        
+        resp = requests.get(self.DOWNLOAD_URL, headers=self.HEADERS, verify=False, timeout=60)
+        resp.raise_for_status()
+
+        with open(zip_path, "wb") as f:
+            f.write(resp.content)
+        
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(self.raw_dir)
+            self._extracted_files = [self.raw_dir / name for name in zip_ref.namelist()]
+        
+        logger.info(f"[{self.job_name}] 다운로드 및 압축 해제 완료")
+
+    def refine(self) -> None:
+        """[2단계] 해제된 파일 중 엑셀 파일을 찾아 데이터 정제."""
+        excel_files = [f for f in self._extracted_files if f.suffix.lower() in ('.xlsx', '.xls')]
+        if not excel_files:
+            logger.error(f"[{self.job_name}] 엑셀 파일 없음")
+            return
+
+        target_file = excel_files[0]
+        try:
+            wb = openpyxl.load_workbook(target_file, data_only=True)
+            sheet = wb.active
+            rows = list(sheet.rows)
+            if not rows: return
+
+            # 실제 헤더 행 찾기 (예: '연번' 단어가 포함된 행)
+            header_idx = 0
+            for i, row in enumerate(rows):
+                vals = [str(cell.value) if cell.value else "" for cell in row]
+                if "연번" in vals:
+                    header_idx = i
+                    break
+            
+            header = [str(cell.value).strip() if cell.value else None for cell in rows[header_idx]]
+            
+            for row in rows[header_idx + 1:]:
+                # 모든 셀이 비어있으면 건너뜀
+                if not any(cell.value for cell in row):
+                    continue
+
+                record = {}
+                for i, cell in enumerate(row):
+                    if i < len(header) and header[i]:
+                        key = header[i]
+                        val = cell.value
+                        if isinstance(val, str): val = val.strip()
+                        record[key] = val
+                
+                record["_source"] = "work_go_kr"
+                self._add_metadata(record)
+                self._refined_records.append(record)
+            wb.close()
+        except Exception as e:
+            logger.error(f"[{self.job_name}] 엑셀 파싱 실패: {e}")
+            raise
+
+    def extract(self) -> Path:
+        """[3단계] 정제된 데이터를 CSV로 저장."""
+        filename = f"{self.job_name}_{self._today_str()}.csv"
+        return self._save_csv(self._refined_records, filename)
+
+    def _extract_records_from_raw(self, raw_data: Any) -> List[dict]:
+        return []
 
