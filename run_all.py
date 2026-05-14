@@ -22,7 +22,8 @@ def main():
         "python main.py --job foodsafety_haccp",
         "python main.py --job foodsafety_restaurant",
         "python main.py --job dataportal_all",
-        "python main.py --job work24_youth_friendly"
+        "python main.py --job work24_youth_friendly",
+        "python main.py --job work24_small_giants"
     ]
 
     for job in jobs:
