@@ -31,6 +31,8 @@ import sys
 from pathlib import Path
 
 
+from typing import Optional
+
 # ------------------------------------------------------------------
 # 로깅 설정 — stdout 전용 (파일 핸들러 없음)
 # ------------------------------------------------------------------
@@ -44,7 +46,7 @@ def setup_logging(level: str = "INFO") -> None:
         handlers=[
             logging.StreamHandler(sys.stdout),
         ],
-        force=True,  # 기존 핸들러 초기화 후 재설정
+        force=True,  # Python 3.8+ 지원
     )
 
 
