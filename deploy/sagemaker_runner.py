@@ -83,6 +83,14 @@ def step1_clone() -> None:
     logging.info("1단계: GitHub 코드 클론")
     logging.info("=" * 60)
 
+    # SageMaker 컨테이너에 git이 없는 경우 설치
+    import shutil as _shutil
+    if not _shutil.which("git"):
+        logging.info("git이 없습니다. apt-get으로 설치합니다...")
+        run(["apt-get", "update", "-qq"])
+        run(["apt-get", "install", "-y", "-qq", "git"])
+        logging.info("git 설치 완료")
+
     # 이전 실행 잔여물 정리
     if REPO_DIR.exists():
         shutil.rmtree(REPO_DIR)
