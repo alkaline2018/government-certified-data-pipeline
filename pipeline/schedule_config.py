@@ -15,7 +15,9 @@ run_month: yearly 스케줄에서 실행할 월 (1~12, 기본값 1)
 run_day:   yearly/monthly 에서 실행할 일 (1~28, 기본값 1)
 """
 
-SCHEDULE_CONFIG: dict[str, dict] = {
+from typing import Dict, List, Optional
+
+SCHEDULE_CONFIG: Dict[str, Dict] = {
     # ────────────────────────────────────────────
     # 식품의약품안전처 — 연 1회 (매년 1월)
     # ────────────────────────────────────────────
@@ -89,10 +91,17 @@ SCHEDULE_CONFIG: dict[str, dict] = {
         "description": "청년친화강소기업 (월 1회)",
         "per_page": 100,
     },
+    "work24_small_giants": {
+        "schedule_type": "yearly",
+        "run_month": 1,
+        "run_day": 1,
+        "description": "고용노동부 강소기업 명단 (연 1회)",
+        "per_page": 1,
+    },
 }
 
 
-def get_jobs_due_today(today=None) -> list[str]:
+def get_jobs_due_today(today: Optional[object] = None) -> List[str]:
     """
     오늘 실행해야 할 Job ID 목록을 반환한다.
 
