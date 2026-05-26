@@ -50,10 +50,10 @@ def validate():
         expected = spec["expected_count"]
         required_cols = spec["columns"]
         
-        # 파일 찾기
+        # 파일 찾기 (최신 폴더의 덮어쓰기된 파일을 우선 매칭하기 위해 역순 탐색)
         matched_file = None
-        for f in csv_files:
-            if Path(f).name.startswith(prefix):
+        for f in reversed(csv_files):
+            if Path(f).name == f"{prefix}.csv":
                 matched_file = f
                 break
         
