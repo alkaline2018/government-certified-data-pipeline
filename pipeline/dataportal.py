@@ -226,6 +226,6 @@ class DataPortalPipeline(BasePipeline):
 
     def extract(self) -> Path:
         """[3단계] 정제된 데이터를 CSV 파일로 저장."""
-        filename = f"{self.job_name}_{self._today_str()}.csv"
+        filename = f"{self.job_name}.csv"
         return self._save_csv(self._refined_records, filename)
 
