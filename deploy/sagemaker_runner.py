@@ -12,7 +12,7 @@ from typing import List, Union, Optional  # Python 3.9 호환성을 위해 추�
 # 1. 환경 설정 및 경로 정의
 # ==========================================
 S3_BUCKET = "zinidata-prod-apne2-datalake"
-S3_PREFIX = "di/government-certified-data-pipeline"
+S3_PREFIX = "di/nice_scb"
 
 # 모든 작업은 /tmp 내부에서 수행 (권한 보장)
 BASE_DIR  = "/tmp/pipeline_job"
