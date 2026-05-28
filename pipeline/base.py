@@ -265,14 +265,25 @@ class BasePipeline(ABC):
             logger.warning(f"[{self.job_name}] 저장할 데이터가 없습니다.")
             return filepath
 
-        keys = data[0].keys()
+        # 문자열 필드 내 개행 문자를 공백으로 치환한 복사본 생성
+        cleaned_data = []
+        for row in data:
+            cleaned_row = {}
+            for k, v in row.items():
+                if isinstance(v, str):
+                    cleaned_row[k] = v.replace('\r\n', ' ').replace('\n', ' ').replace('\r', ' ')
+                else:
+                    cleaned_row[k] = v
+            cleaned_data.append(cleaned_row)
+
+        keys = cleaned_data[0].keys()
         with open(filepath, "w", encoding="utf-8-sig", newline="") as f:
             # ‡ 를 구분자로 사용하여 데이터 내 특수문자 문제를 방지
             writer = csv.DictWriter(f, fieldnames=keys, delimiter="‡")
             writer.writeheader()
-            writer.writerows(data)
+            writer.writerows(cleaned_data)
             
-        logger.info(f"[{self.job_name}] CSV 저장 완료: {filepath} ({len(data)}건)")
+        logger.info(f"[{self.job_name}] CSV 저장 완료: {filepath} ({len(cleaned_data)}건)")
         return filepath
 
     def _upload_to_s3(self, file_path: Path) -> None:
