@@ -134,7 +134,7 @@ datasets:
 - name: FoodSafety_HACCP_적용업소
   file_prefix: FoodSafety_HACCP_적용업소
   source: 식품의약품안전처
-  expected_count: 39011
+  expected_count: 39092
   tolerance_pct: 97
   columns:
   - PRSDNT_NM
@@ -158,7 +158,7 @@ datasets:
 - name: FoodSafety_식품모범음식점
   file_prefix: FoodSafety_식품모범음식점
   source: 식품의약품안전처
-  expected_count: 23128
+  expected_count: 23127
   tolerance_pct: 97
   columns:
   - OPERT_DT
