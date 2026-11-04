@@ -5,8 +5,10 @@ import boto3
 import shutil
 import urllib.request  # 추가
 import zipfile         # unzip 명령어 대신 안전하게 사용
+from datetime import datetime
 from pathlib import Path
-from typing import List, Union, Optional  # Python 3.9 호환성을 위해 추가
+from typing import List, Union, Optional, Tuple  # Python 3.9 호환성을 위해 추가
+from botocore.exceptions import ClientError
 
 # ==========================================
 # 1. 환경 설정 및 경로 정의
@@ -83,10 +85,105 @@ subprocess.run(
     shell=True, check=True, cwd=REPO_DIR
 )
 
+s3_client = boto3.client('s3')
+
+# ==========================================
+# 3-1. 강소기업 명단 대체 로직
+# ==========================================
+# SageMaker 환경에서는 고용24 다운로드가 실패해 이번 달 CSV가 생성되지 않을 수 있다.
+# 그 경우 S3에 이전 달 업로드분 중 가장 최근 파일을 찾아 이번 달 경로로 가져온다.
+# 경로는 업로드 규칙(prefix/output/YYYY/MM/파일명)으로 추정한다.
+SMALL_GIANTS_FILENAME = "Work24_강소기업_명단.csv"
+SMALL_GIANTS_LOOKBACK_MONTHS = 12
+# 2026-05-27 이전 업로드분은 구 프리픽스에 있음
+SMALL_GIANTS_SEARCH_PREFIXES = [S3_PREFIX, "di/government-certified-data-pipeline"]
+
+
+def _previous_months(base: datetime, count: int) -> List[Tuple[str, str]]:
+    """base 월의 직전 달부터 count개월 전까지 (YYYY, MM) 목록을 최신순으로 반환."""
+    months = []
+    year, month = base.year, base.month
+    for _ in range(count):
+        month -= 1
+        if month == 0:
+            year, month = year - 1, 12
+        months.append((f"{year:04d}", f"{month:02d}"))
+    return months
+
+
+def _s3_key_exists(bucket: str, key: str) -> bool:
+    try:
+        s3_client.head_object(Bucket=bucket, Key=key)
+        return True
+    except ClientError:
+        # ListBucket 권한이 없으면 없는 객체도 403으로 응답하므로 함께 '없음'으로 처리
+        return False
+
+
+def _find_small_giants_key(bucket: str, year: str, month: str) -> Optional[str]:
+    """해당 연/월에 업로드된 강소기업 명단 CSV의 S3 키를 찾는다."""
+    stem = SMALL_GIANTS_FILENAME[:-len(".csv")]
+    for prefix in SMALL_GIANTS_SEARCH_PREFIXES:
+        # 1) 현재 파일명 규칙으로 직접 확인
+        key = f"{prefix}/output/{year}/{month}/{SMALL_GIANTS_FILENAME}"
+        if _s3_key_exists(bucket, key):
+            return key
+
+        # 2) 날짜가 붙은 파일명(Work24_강소기업_명단_YYYYMMDD.csv) 등은 목록 조회로 확인
+        try:
+            resp = s3_client.list_objects_v2(
+                Bucket=bucket, Prefix=f"{prefix}/output/{year}/{month}/{stem}"
+            )
+        except ClientError as e:
+            print(f"⚠️  목록 조회 불가 ({prefix}/output/{year}/{month}): {e}")
+            continue
+        csv_objs = [o for o in resp.get("Contents", []) if o["Key"].endswith(".csv") and o["Size"] > 0]
+        if csv_objs:
+            return max(csv_objs, key=lambda o: o["LastModified"])["Key"]
+    return None
+
+
+def ensure_small_giants(bucket: str) -> None:
+    now = datetime.now()
+    year, month = f"{now.year:04d}", f"{now.month:02d}"
+    local_path = Path(LOCAL_STORAGE) / "output" / year / month / SMALL_GIANTS_FILENAME
+
+    if local_path.exists() and local_path.stat().st_size > 0:
+        print(f">>> 강소기업 명단 이번 달 수집 성공, 대체 불필요: {local_path}")
+        return
+
+    dst_key = f"{S3_PREFIX}/output/{year}/{month}/{SMALL_GIANTS_FILENAME}"
+    if _s3_key_exists(bucket, dst_key):
+        print(f">>> 강소기업 명단 이번 달 파일이 이미 S3에 있음, 대체 불필요: {dst_key}")
+        return
+
+    print(">>> 강소기업 명단 이번 달 수집 실패 → S3 이전 파일 탐색")
+    for prev_year, prev_month in _previous_months(now, SMALL_GIANTS_LOOKBACK_MONTHS):
+        src_key = _find_small_giants_key(bucket, prev_year, prev_month)
+        if src_key is None:
+            continue
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            s3_client.download_file(bucket, src_key, str(local_path))
+        except ClientError as e:
+            print(f"❌ 강소기업 명단 기준 파일 다운로드 실패: {src_key} | {e}")
+            return
+        # 이후 업로드 단계에서 dst_key 로 올라감
+        print(f"✅ 강소기업 명단 대체: s3://{bucket}/{src_key} → {dst_key}")
+        return
+
+    print(f"❌ 최근 {SMALL_GIANTS_LOOKBACK_MONTHS}개월 내 강소기업 명단 파일을 S3에서 찾지 못했습니다.")
+
+
+try:
+    ensure_small_giants(S3_BUCKET)
+except Exception as e:
+    # 대체 로직 실패가 전체 업로드를 막지 않도록 함
+    print(f"❌ 강소기업 명단 대체 로직 오류: {e}")
+
 # ==========================================
 # 4. S3 업로드 로직
 # ==========================================
-s3_client = boto3.client('s3')
 
 def upload_to_s3(local_dir: Union[str, Path], bucket: str, prefix: str) -> bool:
     path_root = Path(local_dir)
