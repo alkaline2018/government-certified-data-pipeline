@@ -35,7 +35,14 @@ def validate():
     total_expected = 0
     updated_count = 0
     results = []
-    
+
+    # run_all.py가 전월 파일 복사로 채운 데이터셋 ("이름=원본키;이름=원본키")
+    fallback_copied = dict(
+        item.split("=", 1)
+        for item in os.getenv("FALLBACK_COPIED_DATASETS", "").split(";")
+        if "=" in item
+    )
+
     # storage/output/ 폴더 내의 CSV 파일 재귀 탐색
     csv_files = sorted(glob.glob("storage/output/**/*.csv", recursive=True))
     
@@ -122,8 +129,12 @@ def validate():
         if not col_ok:
             status = "[FAIL] (컬럼누락)"
             
+        fallback_src = fallback_copied.get(name)
+        if fallback_src:
+            status += f" 📌 전월 파일 복사 ({fallback_src})"
+
         print(f"{name:<38} {actual_rows:>8,} {expected_val:>8} {ratio:>7.1f}%  {status}")
-        
+
         results.append({
             "name": name,
             "actual": actual_rows,
@@ -131,7 +142,8 @@ def validate():
             "ratio": ratio,
             "status": status,
             "missing_cols": missing_cols,
-            "extra_cols": extra_cols
+            "extra_cols": extra_cols,
+            "fallback_src": fallback_src
         })
 
     print("-" * 100)

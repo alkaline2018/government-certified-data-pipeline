@@ -327,7 +327,11 @@ class SlackNotifier:
                 status = "🟢" if ratio >= 99 else "🟡" if ratio >= 90 else "🔴"
                 exp_str = f"{expected:,}" if expected else "N/A"
                 msg = f"*{name}*\n{actual:,} / {exp_str} 건  `{ratio:.1f}%`"
-            
+
+            # 수집 실패로 이전 달 파일을 복사해 채운 경우 표시
+            if res.get("fallback_src"):
+                msg += f"\n📌 전월 파일 복사 (`{res['fallback_src']}`)"
+
             blocks.append({
                 "type": "section",
                 "text": {
